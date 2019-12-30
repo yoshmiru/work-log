@@ -7,12 +7,13 @@ import           Control.Concurrent
 import           Control.Monad.IO.Class (MonadIO, liftIO)
 import           Control.Monad.Logger   (runStderrLoggingT)
 import           Control.Monad.Trans.Except
-import           Data.Map
-import           Database.Persist        hiding ( insert, delete )
+import           Data.Map hiding (insert)
+import qualified Data.Map as M
+import           Database.Persist        hiding ( delete )
 import           Database.Persist.Sqlite ( ConnectionPool, createSqlitePool
                                          , runSqlPool, runSqlPersistMPool
                                          , runMigration, selectList, (==.)
-                                         --, insert
+                                         , insert
                                          , entityVal)
 import           Data.String.Conversions (cs)
 import           Network.Wai
@@ -41,6 +42,7 @@ server sqliteFile = do
 
   runSqlPool (runMigration migrateAll) pool
   db <- mkDB
+  _ <- liftIO $ flip runSqlPersistMPool pool $ insert (Project "name")
   return (apiServer pool db :<|> Tagged assets)
 
 apiServer :: ConnectionPool -> DB -> Server Api
@@ -80,7 +82,7 @@ insertItem (DB mvar) new = modifyMVar mvar $ \m -> do
   let newKey = case keys m of
         [] -> ItemId 0
         ks -> succ (maximum ks)
-  return (insert newKey new m, newKey)
+  return (M.insert newKey new m, newKey)
 
 lookupItem :: DB -> ItemId -> IO (Maybe Item)
 lookupItem (DB mvar) i = fmap (Item i) . Data.Map.lookup i <$> readMVar mvar

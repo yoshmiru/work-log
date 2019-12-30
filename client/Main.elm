@@ -7,6 +7,7 @@ import Html exposing (Html, button, div, input, li, text, ul)
 import Html.Attributes exposing (value)
 import Html.Events exposing (onClick, onInput)
 import Http
+import Task exposing (andThen)
 
 
 main : Program () Model Msg
@@ -33,7 +34,7 @@ type alias Model =
 
 init : ( Model, Cmd Msg )
 init =
-    ( Model Dict.empty "" Nothing
+    ( Model Dict.empty [] "" Nothing
     , Api.getApiItem (fromServer Initial)
     )
 
@@ -70,9 +71,11 @@ update msg model =
                     ( model
                     , itemIds
                         |> List.map (\id -> getApiItemByItemId id (fromServer NewItem))
-                        |> Cmd.batch
+                        |> \_ -> getApiProjects(fromServer Projects)
                     )
 
+                Projects projects ->
+                    ( { model | projects = projects } , Cmd.none )
                 NewItem item ->
                     ( { model | items = Dict.insert item.id item model.items }
                     , Cmd.none
