@@ -44,7 +44,8 @@ server sqliteFile = do
   return (apiServer pool db :<|> Tagged assets)
 
 apiServer :: ConnectionPool -> DB -> Server Api
-apiServer pool db = listItem db
+apiServer pool db = listProjects pool
+  :<|> listItem db
   :<|> getItem db
   :<|> postItem db
   :<|> deleteItem db
@@ -55,7 +56,7 @@ listProjects pool = liftIO $ flip runSqlPersistMPool pool $ do
   let projects = Prelude.map (\entity@(Entity _ project) -> project) maybeProjects
   return projects
 
-listItem :: DB -> Handler [Item]
+listItem :: DB -> Handler [ItemId]
 listItem db = liftIO $ allItemIds db
 
 getItem :: DB -> ItemId -> Handler Item

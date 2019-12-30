@@ -15,8 +15,8 @@ import Models
 
 type Api =
   "api" :>
-    (--"projects" :> Get '[JSON] [Project] :<|>
-    "item" :> Get '[JSON] [Item] :<|>
+    ("projects" :> Get '[JSON] [Project] :<|>
+     "item" :> Get '[JSON] [ItemId] :<|>
      "item" :> Capture "itemId" ItemId :> Get '[JSON] Item :<|>
      "item" :> ReqBody '[JSON] String :> Post '[JSON] ItemId :<|>
      "item" :> Capture "itemId" ItemId :> Delete '[JSON] ())

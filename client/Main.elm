@@ -25,6 +25,7 @@ main =
 
 type alias Model =
     { items : Dict Int Item
+    , projects : List Project
     , addItemInput : String
     , error : Maybe String
     }
@@ -49,6 +50,7 @@ type Msg
 
 type FromServer
     = Initial (List ItemId)
+    | Projects (List Project)
     | NewItem Item
     | Delete ItemId
 
@@ -148,6 +150,8 @@ view model =
     let
         items =
             List.map (viewItem << Tuple.second) (Dict.toList model.items)
+        projects =
+            List.map viewProject model.projects
 
         error =
             model.error
@@ -159,6 +163,8 @@ view model =
         , input [ onInput (FromUi << AddItemInputChange), value model.addItemInput ] []
         , button [ onClick (FromUi AddItemButton) ] [ text "add item" ]
         , error
+        , div []
+            [ ul [] projects ]
         ]
 
 
@@ -169,6 +175,11 @@ viewItem item =
         , text " - "
         , button [ onClick (FromUi <| Done item.id) ] [ text "done" ]
         ]
+
+viewProject : Project -> Html Msg
+viewProject project =
+    li []
+        [ text project.projectName ]
 
 
 viewError : String -> Html msg

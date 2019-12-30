@@ -24,7 +24,7 @@ main = generateElmModuleWith
   defElmImports
   "client"
   [
-   -- DefineElm (Proxy :: Proxy Project),
+    DefineElm (Proxy :: Proxy Project),
     DefineElm (Proxy :: Proxy Item),
     DefineElm (Proxy :: Proxy ItemId)
   ]
