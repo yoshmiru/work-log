@@ -1,16 +1,26 @@
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeOperators #-}
 
 module App where
 
 import           Control.Concurrent
-import           Control.Monad.IO.Class
+import           Control.Monad.IO.Class (MonadIO, liftIO)
+import           Control.Monad.Logger   (runStderrLoggingT)
 import           Control.Monad.Trans.Except
 import           Data.Map
+import           Database.Persist        hiding ( insert, delete )
+import           Database.Persist.Sqlite ( ConnectionPool, createSqlitePool
+                                         , runSqlPool, runSqlPersistMPool
+                                         , runMigration, selectList, (==.)
+                                         --, insert
+                                         , entityVal)
+import           Data.String.Conversions (cs)
 import           Network.Wai
 import           Network.Wai.MakeAssets
 import           Servant
 
 import           Api
+import           Models
 
 type WithAssets = Api :<|> Raw
 
@@ -20,20 +30,33 @@ withAssets = Proxy
 options :: Options
 options = Options "client"
 
-app :: IO Application
-app = serve withAssets <$> server
+app :: FilePath -> IO Application
+app sqliteFile = serve withAssets <$> server sqliteFile
 
-server :: IO (Server WithAssets)
-server = do
+server :: FilePath -> IO (Server WithAssets)
+server sqliteFile = do
   assets <- serveAssets options
-  db     <- mkDB
-  return (apiServer db :<|> Tagged assets)
+  pool <- runStderrLoggingT $ do
+    createSqlitePool (cs sqliteFile) 5
 
-apiServer :: DB -> Server Api
-apiServer db = listItems db :<|> getItem db :<|> postItem db :<|> deleteItem db
+  runSqlPool (runMigration migrateAll) pool
+  db <- mkDB
+  return (apiServer pool db :<|> Tagged assets)
 
-listItems :: DB -> Handler [ItemId]
-listItems db = liftIO $ allItemIds db
+apiServer :: ConnectionPool -> DB -> Server Api
+apiServer pool db = listItem db
+  :<|> getItem db
+  :<|> postItem db
+  :<|> deleteItem db
+
+listProjects :: ConnectionPool -> Handler [Project]
+listProjects pool = liftIO $ flip runSqlPersistMPool pool $ do
+  maybeProjects <- selectList [] []
+  let projects = Prelude.map (\entity@(Entity _ project) -> project) maybeProjects
+  return projects
+
+listItem :: DB -> Handler [Item]
+listItem db = liftIO $ allItemIds db
 
 getItem :: DB -> ItemId -> Handler Item
 getItem db n = maybe (throwError err404) return =<< liftIO (lookupItem db n)

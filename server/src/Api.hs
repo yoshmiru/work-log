@@ -11,9 +11,12 @@ import           Servant.API
 import qualified Elm.Derive
 import           Elm.Module
 
+import Models
+
 type Api =
   "api" :>
-    ("item" :> Get '[JSON] [ItemId] :<|>
+    (--"projects" :> Get '[JSON] [Project] :<|>
+    "item" :> Get '[JSON] [Item] :<|>
      "item" :> Capture "itemId" ItemId :> Get '[JSON] Item :<|>
      "item" :> ReqBody '[JSON] String :> Post '[JSON] ItemId :<|>
      "item" :> Capture "itemId" ItemId :> Delete '[JSON] ())
@@ -33,5 +36,6 @@ data Item
   }
   deriving (Show, Eq)
 
+Elm.Derive.deriveBoth Elm.Derive.defaultOptions ''Project
 Elm.Derive.deriveBoth Elm.Derive.defaultOptions ''Item
 Elm.Derive.deriveBoth Elm.Derive.defaultOptions ''ItemId

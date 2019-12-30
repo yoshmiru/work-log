@@ -1,10 +1,10 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.31.2.
+-- This file has been generated from package.yaml by hpack version 0.32.0.
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: d6312c7b6054a2aff2c1b2f631091b083c17145251426d82b19a69c196455dd7
+-- hash: ad41e41079081871870cd11b34bae2abb2e63ed157e919d721158b3a0466e3c3
 
 name:           example-servant-elm
 version:        0.0.0
@@ -19,9 +19,15 @@ executable server
     , base
     , containers
     , elm-bridge >=0.5.2
+    , monad-logger
+    , persistent
+    , persistent-template
+    , persistent-sqlite
     , servant
     , servant-elm >=0.6.0.2
     , servant-server
+    , string-conversions
+    , text
     , transformers
     , wai
     , wai-make-assets
@@ -29,6 +35,7 @@ executable server
   other-modules:
       Api
       App
+      Models
       Paths_example_servant_elm
   default-language: Haskell2010
 
@@ -59,5 +66,6 @@ test-suite spec
       Api
       App
       Main
+      Models
       Paths_example_servant_elm
   default-language: Haskell2010

@@ -10,4 +10,4 @@ main = do
       settings = setPort port $ setBeforeMainLoop
         (hPutStrLn stderr ("listening on port " ++ show port ++ "..."))
         defaultSettings
-  runSettings settings =<< app
+  runSettings settings =<< app "splite.db"
