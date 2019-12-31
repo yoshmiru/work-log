@@ -18,7 +18,7 @@ type Api =
   "api" :>
     ("project" :> Get '[JSON] [Project] :<|>
      "project" :> ReqBody '[JSON] Project :> Post '[JSON] () :<|>
---     "work" :> ReqBody '[JSON] ElmWork :> Post '[JSON] ElmWorkId :<|>
+     "work" :> ReqBody '[JSON] ElmWork :> Post '[JSON] ElmWorkId :<|>
      "item" :> Get '[JSON] [ItemId] :<|>
      "item" :> Capture "itemId" ItemId :> Get '[JSON] Item :<|>
      "item" :> ReqBody '[JSON] String :> Post '[JSON] ItemId :<|>

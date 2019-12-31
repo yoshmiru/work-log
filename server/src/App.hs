@@ -52,7 +52,7 @@ apiServer :: ConnectionPool -> DB -> Server Api
 apiServer pool db =
        listProjects pool
   :<|> postProject pool
---  :<|> postWork pool
+  :<|> postWork pool
   :<|> listItem db
   :<|> getItem db
   :<|> postItem db
@@ -77,6 +77,7 @@ postProject :: ConnectionPool -> Project -> Handler ()
 postProject pool new = liftIO $ flip runSqlPersistMPool pool $ do
   _ <- insert new
   return ()
+
 postWork :: ConnectionPool -> ElmWork -> Handler ElmWorkId
 postWork pool new = liftIO $ flip runSqlPersistMPool pool $ do
     let work = Work pid from to notes
