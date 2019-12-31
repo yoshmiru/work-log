@@ -25,6 +25,13 @@ packages:
       sha256: b4ef29fd6ea685aae13276ee96ead1339a5eb3e739f2794a3ff4421e80cfaa60
   original:
     hackage: wai-make-assets-0.2
+- completed:
+    hackage: time-1.8.0.2@sha256:2a206e80c5a836986db33042893de1e34cb4df60427f73aa61552f6e9866a3aa,5482
+    pantry-tree:
+      size: 5404
+      sha256: d01f87bca5d77addf0d8b565b7de063644836c850915402e8ce3b9d868279213
+  original:
+    hackage: time-1.8.0.2
 snapshots:
 - completed:
     size: 498402

@@ -28,6 +28,7 @@ executable server
     , servant-server
     , string-conversions
     , text
+    , time
     , transformers
     , wai
     , wai-make-assets

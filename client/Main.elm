@@ -2,11 +2,14 @@ module Main exposing (FromServer(..), FromUi(..), Model, Msg(..), fromServer, in
 
 import Api exposing (..)
 import Browser
+import Debug exposing (log)
 import Dict exposing (Dict)
-import Html exposing (Html, button, div, input, li, text, ul)
-import Html.Attributes exposing (value)
+import Html exposing (Html, button, div, input, li, option, select, text, textarea, ul)
+import Html.Attributes exposing (placeholder, type_, value)
 import Html.Events exposing (onClick, onInput)
 import Http
+import List exposing (filter, head)
+import String exposing (fromInt, toInt)
 import Task exposing (andThen)
 
 
@@ -27,14 +30,16 @@ main =
 type alias Model =
     { items : Dict Int Item
     , projects : List Project
-    , addItemInput : String
+    , addProjectInput : String
+    , addProjectUnitPriceInput : Int
+    , currentProject : Maybe Project
     , error : Maybe String
     }
 
 
 init : ( Model, Cmd Msg )
 init =
-    ( Model Dict.empty [] "" Nothing
+    ( Model Dict.empty [] "" 0 Nothing Nothing
     , Api.getApiItem (fromServer Initial)
     )
 
@@ -51,15 +56,21 @@ type Msg
 
 type FromServer
     = Initial (List ItemId)
+    | InitialProjects ()
     | Projects (List Project)
     | NewItem Item
     | Delete ItemId
 
 
 type FromUi
-    = AddItemInputChange String
-    | AddItemButton
+    = AddProjectInputChange String
+    | AddProjectUnitPriceInputChange String
+    | AddProjectButton
     | Done ItemId
+    | SelectProject String
+    | WorkInputFrom String
+    | WorkInputTo String
+    | WorkInputNotes String
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -71,9 +82,11 @@ update msg model =
                     ( model
                     , itemIds
                         |> List.map (\id -> getApiItemByItemId id (fromServer NewItem))
-                        |> \_ -> getApiProjects(fromServer Projects)
+                        |> \_ -> getApiProject(fromServer Projects)
                     )
 
+                InitialProjects _ ->
+                    ( model , getApiProject(fromServer Projects) )
                 Projects projects ->
                     ( { model | projects = projects } , Cmd.none )
                 NewItem item ->
@@ -88,28 +101,50 @@ update msg model =
 
         FromUi fromUi ->
             case fromUi of
-                AddItemButton ->
+                AddProjectButton ->
                     let
-                        itemName =
-                            model.addItemInput
+                        projectName =
+                            model.addProjectInput
                     in
-                    if itemName == "" then
+                    if projectName == "" then
                         update (Error "empty field") model
 
                     else
-                        ( { model | addItemInput = "" }
-                        , postApiItem itemName (fromServer (\id -> NewItem (Item id itemName)))
+                        ( { model | addProjectInput = "" }
+                        , postApiProject (Project projectName 3000) (fromServer InitialProjects)
                         )
 
-                AddItemInputChange t ->
-                    ( { model | addItemInput = t, error = Nothing }
+                AddProjectInputChange t ->
+                    ( { model | addProjectInput = t, error = Nothing }
                     , Cmd.none
                     )
+
+                AddProjectUnitPriceInputChange t ->
+                    let unitPrice = case toInt(t) of
+                            Just price -> price
+                            _ -> 0
+                    in
+                        if unitPrice == 0 then
+                            update(Error "invalid price") model
+                        else
+                            ( { model | addProjectUnitPriceInput = unitPrice, error = Nothing }
+                            , Cmd.none
+                            )
 
                 Done id ->
                     ( model
                     , deleteApiItemByItemId id (fromServer (\() -> Delete id))
                     )
+                SelectProject projectName ->
+                    let find projects = filter_ projects |> head
+                        filter_ projects = filter byName projects
+                        byName = \p -> p.projectName == projectName
+                    in
+                        ( { model | currentProject = find model.projects }, Cmd.none )
+                WorkInputFrom t ->
+                    (model, "" ++ (log "debug" t) |> \_ -> Cmd.none)
+                WorkInputTo t -> (model, Cmd.none)
+                WorkInputNotes t -> (model, Cmd.none)
 
         Error error ->
             ( { model | error = Just error }, Cmd.none )
@@ -160,16 +195,45 @@ view model =
             model.error
                 |> Maybe.map viewError
                 |> Maybe.withDefault (Html.text "")
+        projectName = case model.currentProject of
+            Just project -> project.projectName
+            _ -> ""
+        projectUnitPrice = case model.currentProject of
+            Just project -> fromInt(project.projectUnitPrice)
+            _ -> ""
+
     in
     div []
         [ ul [] items
-        , input [ onInput (FromUi << AddItemInputChange), value model.addItemInput ] []
-        , button [ onClick (FromUi AddItemButton) ] [ text "add item" ]
+        , input [
+            placeholder "Project Name",
+            onInput (FromUi << AddProjectInputChange), value model.addProjectInput
+            ] []
+        , input [
+            type_ "number",
+            placeholder "Unit Price",
+            onInput (FromUi << AddProjectUnitPriceInputChange)
+            ] []
+        , button [ onClick (FromUi AddProjectButton) ] [ text "add project" ]
         , error
         , div []
-            [ ul [] projects ]
+            [ select [ onInput (FromUi << SelectProject) ] projects ]
+        , div [] [text (projectName ++ " " ++ projectUnitPrice)] 
+        , viewWork model.currentProject
         ]
 
+viewWork : Maybe Project -> Html Msg
+viewWork maybeProject =
+    case maybeProject of
+        Just project -> div [] [
+                input [
+                    type_ "time", placeholder "From",
+                    onInput (FromUi << WorkInputFrom)
+                ] [],
+                input [type_ "time", placeholder "To"] [],
+                textarea [placeholder "Notes"] []
+            ]
+        _ -> text "Please select a project"
 
 viewItem : Item -> Html Msg
 viewItem item =
@@ -181,7 +245,7 @@ viewItem item =
 
 viewProject : Project -> Html Msg
 viewProject project =
-    li []
+    option [ value project.projectName ]
         [ text project.projectName ]
 
 

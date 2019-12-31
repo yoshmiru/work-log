@@ -13,9 +13,12 @@ import           Database.Persist        hiding ( delete )
 import           Database.Persist.Sqlite ( ConnectionPool, createSqlitePool
                                          , runSqlPool, runSqlPersistMPool
                                          , runMigration, selectList, (==.)
-                                         , insert
-                                         , entityVal)
+                                         , insert , entityVal
+                                         , fromSqlKey, toSqlKey)
 import           Data.String.Conversions (cs)
+import           Data.Time.Clock
+import           Data.Time.LocalTime
+import           GHC.Int
 import           Network.Wai
 import           Network.Wai.MakeAssets
 import           Servant
@@ -42,11 +45,14 @@ server sqliteFile = do
 
   runSqlPool (runMigration migrateAll) pool
   db <- mkDB
-  _ <- liftIO $ flip runSqlPersistMPool pool $ insert (Project "name")
+  --_ <- liftIO $ flip runSqlPersistMPool pool $ insert (Project "name")
   return (apiServer pool db :<|> Tagged assets)
 
 apiServer :: ConnectionPool -> DB -> Server Api
-apiServer pool db = listProjects pool
+apiServer pool db =
+       listProjects pool
+  :<|> postProject pool
+--  :<|> postWork pool
   :<|> listItem db
   :<|> getItem db
   :<|> postItem db
@@ -66,6 +72,24 @@ getItem db n = maybe (throwError err404) return =<< liftIO (lookupItem db n)
 
 postItem :: DB -> String -> Handler ItemId
 postItem db new = liftIO $ insertItem db new
+
+postProject :: ConnectionPool -> Project -> Handler ()
+postProject pool new = liftIO $ flip runSqlPersistMPool pool $ do
+  _ <- insert new
+  return ()
+postWork :: ConnectionPool -> ElmWork -> Handler ElmWorkId
+postWork pool new = liftIO $ flip runSqlPersistMPool pool $ do
+    let work = Work pid from to notes
+        pid = toSqlKey 1
+        notes = ""
+        from = timeToTimeOfDay d
+        to = Just (timeToTimeOfDay d)
+        d = secondsToDiffTime 0
+        fromInt64 :: Int64 -> Int
+        fromInt64 n = fromIntegral n
+
+    workId <- insert work
+    return $ ElmWorkId $ fromInt64 $ fromSqlKey workId
 
 -- fake DB
 

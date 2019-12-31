@@ -12,6 +12,7 @@ module Models where
 
 import Data.Aeson
 import Data.Text
+import Data.Time.LocalTime
 
 import Database.Persist.TH
 
@@ -23,7 +24,14 @@ share [mkPersist sqlSettings, mkMigrate "migrateAll"] [persistLowerCase|
 --   deriving Eq Read Show
 Project
   name Text
+  unitPrice Int
   UniqueName name
+  deriving Eq Read Show
+Work
+  projectId ProjectId
+  from TimeOfDay
+  to TimeOfDay Maybe
+  note Text
   deriving Eq Read Show
 |]
 
