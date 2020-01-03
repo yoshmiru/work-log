@@ -12,6 +12,13 @@ dependencies:
   - servant-server
   - transformers
   - containers
+  - monad-logger
+  - string-conversions
+  - persistent
+  - persistent-template
+  - persistent-sqlite
+  - text
+  - time
 
 executables:
   server:

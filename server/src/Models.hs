@@ -12,6 +12,7 @@ module Models where
 
 import Data.Aeson
 import Data.Text
+import Data.Time.Clock
 import Data.Time.LocalTime
 
 import Database.Persist.TH
@@ -28,9 +29,9 @@ Project
   UniqueName name
   deriving Eq Read Show
 Work
-  projectId ProjectId
-  from TimeOfDay
-  to TimeOfDay Maybe
+  projectName String
+  from UTCTime
+  to UTCTime Maybe
   note Text
   deriving Eq Read Show
 |]
