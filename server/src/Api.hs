@@ -23,6 +23,7 @@ type Api =
      "work" :> (
         Get '[JSON] [ElmWork] :<|>
         Capture "projectName" String :> Get '[JSON] [ElmWork] :<|>
+        Capture "elmWorkId" ElmWorkId :> Delete '[JSON] () :<|>
         ReqBody '[JSON] ElmWork :> Post '[JSON] ElmWork) :<|>
      "item" :> (Get '[JSON] [ItemId] :<|>
          Capture "itemId" ItemId :> Get '[JSON] Item :<|>

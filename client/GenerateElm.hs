@@ -31,6 +31,7 @@ main = generateElmModuleWith
     DefineElm (Proxy :: Proxy ElmTime),
     DefineElm (Proxy :: Proxy ElmWork),
     DefineElm (Proxy :: Proxy ElmWorkId),
+    --DefineElm (Proxy :: Proxy Work),
     DefineElm (Proxy :: Proxy Item),
     DefineElm (Proxy :: Proxy ItemId)
   ]

@@ -63,6 +63,7 @@ type FromServer
     | Projects (List Project)
     | NewItem Item
     | Delete ItemId
+    | DeleteWork String ElmWorkId
     | PutWork String ElmWork
     | Works String  (List ElmWork)
 
@@ -72,6 +73,7 @@ type FromUi
     | AddProjectUnitPriceInputChange String
     | AddProjectButton
     | AddWorkButton
+    | DeleteWorkButton String ElmWorkId
     | Done ItemId
     | SelectProject String
     | WorkInputFrom String
@@ -102,6 +104,18 @@ update msg model =
 
                 Delete id ->
                     ( { model | items = Dict.remove id model.items }
+                    , Cmd.none
+                    )
+
+                DeleteWork projectName id ->
+                  let works = case Dict.get projectName model.works of
+                        Just ws -> List.filter (\work -> work.workId /= Just id) ws
+                        _ -> []
+                      updater = \mWorks -> case mWorks of
+                        Just _ -> Just works
+                        _ -> Nothing
+                  in
+                    ( { model | works = Dict.update projectName updater model.works }
                     , Cmd.none
                     )
 
@@ -165,6 +179,11 @@ update msg model =
                             ( { model | addProjectUnitPriceInput = unitPrice, error = Nothing }
                             , Cmd.none
                             )
+
+                DeleteWorkButton projectName id ->
+                    ( model
+                    , deleteApiWorkByElmWorkId id (fromServer (\() -> DeleteWork projectName id))
+                    )
 
                 Done id ->
                     ( model
@@ -264,7 +283,10 @@ view model =
 viewWorks : Model -> Html Msg
 viewWorks model =
     case model.currentProject of
-        Just project -> div [] [
+        Just project -> let projectName = project.projectName
+                            works = model.works
+            in
+                div [] [
                 input [
                   type_ "datetime-local", placeholder "From"
                 , onInput (FromUi << WorkInputFrom)
@@ -278,16 +300,21 @@ viewWorks model =
                 , onInput (FromUi << WorkInputNotes)
                 ] [],
                 button [onClick (FromUi AddWorkButton)] [text "add work"],
-                ul [] (viewWork (Dict.get project.projectName model.works))
+                ul [] (viewWork projectName (Dict.get projectName works))
             ]
         _ -> text "Please select a project"
 
-viewWork : Maybe (List ElmWork) -> List (Html Msg)
-viewWork maybeWorks =
+viewWork : String -> Maybe (List ElmWork) -> List (Html Msg)
+viewWork projectName maybeWorks =
     case maybeWorks of
         Just works ->
             let toLi work = li [] [
-                    span [] [ text (formatDate work.elmFrom)]
+                    case work.workId of
+                      Just workId -> button [
+                          onClick (FromUi (DeleteWorkButton projectName workId))
+                        ] [ text "Delete"]
+                      Nothing -> button [] []
+                  , span [] [ text (formatDate work.elmFrom)]
                   , span [] [ text (maybeElmTo work.elmTo)]
                   , span [] [ text work.notes]
                   ]
@@ -338,4 +365,3 @@ formatDate dt = case (dt.day, dt.time) of
           [day, time] -> (join "-" day) ++ " " ++ (join ":" time)
           _ -> ""
         _ -> ""
-  --(ElmDateTime (ElmDay d) (ElmTime t))

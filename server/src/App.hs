@@ -8,9 +8,9 @@ import           Control.Concurrent
 import           Control.Monad.IO.Class (MonadIO, liftIO)
 import           Control.Monad.Logger   (runStderrLoggingT)
 import           Control.Monad.Trans.Except
-import           Data.Map hiding (insert, map)
+import           Data.Map hiding (delete, insert, map)
 import qualified Data.Map as M
-import           Database.Persist        hiding ( delete )
+import           Database.Persist
 import           Database.Persist.Sqlite ( ConnectionPool, createSqlitePool
                                          , runSqlPool, runSqlPersistMPool
                                          , runMigration, selectList, (==.)
@@ -54,7 +54,7 @@ server sqliteFile = do
 apiServer :: ConnectionPool -> DB -> Server Api
 apiServer pool db =
       (listProjects pool :<|> postProject pool)
-  :<|> (listWorks pool :<|> getWorks pool :<|> postWork pool)
+  :<|> (listWorks pool :<|> getWorks pool :<|> deleteWork pool :<|> postWork pool)
   :<|> (listItem db
     :<|> getItem db
     :<|> postItem db
@@ -129,8 +129,18 @@ postProject pool new = liftIO $ flip runSqlPersistMPool pool $ do
   _ <- insert new
   return ()
 
+deleteWork :: ConnectionPool -> ElmWorkId -> Handler ()
+deleteWork pool (ElmWorkId elmWorkId) = liftIO $ flip runSqlPersistMPool pool $
+  delete wid
+  where
+    wid :: WorkId
+    wid = toSqlKey $ toInt64 elmWorkId
+
+
 fromInt64 :: Int64 -> Int
 fromInt64 n = fromIntegral n
+toInt64 :: Int -> Int64
+toInt64 n = fromIntegral n
 
 postWork :: ConnectionPool -> ElmWork -> Handler ElmWork
 postWork pool elmWork = liftIO $ flip runSqlPersistMPool pool $ do
@@ -185,6 +195,6 @@ allItemIds (DB mvar) = keys <$> readMVar mvar
 
 deleteItem :: MonadIO m => DB -> ItemId -> m ()
 deleteItem (DB mvar) i = liftIO $ do
-  modifyMVar_ mvar $ \m -> return (delete i m)
+  modifyMVar_ mvar $ \m -> return (M.delete i m)
   return ()
 
