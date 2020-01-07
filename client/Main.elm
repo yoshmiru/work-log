@@ -4,12 +4,12 @@ import Api exposing (..)
 import Browser
 import Debug exposing (log)
 import Dict exposing (Dict)
-import Html exposing (Html, button, div, input, li, option, select, span, text, textarea, ul)
+import Html exposing (Html, button, div, input, li, option, select, span, table, tr, th, td, text, textarea, ul)
 import Html.Attributes exposing (placeholder, type_, value)
 import Html.Events exposing (onClick, onInput)
 import Http
 import List exposing (filter, head, map)
-import String exposing (fromInt, join, split, toInt)
+import String exposing (fromFloat, fromInt, join, split, toInt)
 import Task exposing (andThen)
 import Tuple exposing (first, second)
 
@@ -161,7 +161,7 @@ update msg model =
                         to = model.addWorkToInput
                         notes = model.addWorkNotesInput
                     in
-                    ( model, postApiWork (ElmWork Nothing projectName from to notes) (fromServer (\work -> PutWork projectName work)))
+                    ( model, postApiWork (ElmWork Nothing projectName from to Nothing notes) (fromServer (\(works) -> Works projectName works)))
 
                 AddProjectInputChange t ->
                     ( { model | addProjectInput = t, error = Nothing }
@@ -300,7 +300,13 @@ viewWorks model =
                 , onInput (FromUi << WorkInputNotes)
                 ] [],
                 button [onClick (FromUi AddWorkButton)] [text "add work"],
-                ul [] (viewWork projectName (Dict.get projectName works))
+                table [] ([tr [] [
+                  th [] [text ""]
+                , th [] [text "From"]
+                , th [] [text "To"]
+                , th [] [text "Hours"]
+                , th [] [text "Notes"]
+                  ]] ++ viewWork projectName (Dict.get projectName works))
             ]
         _ -> text "Please select a project"
 
@@ -308,19 +314,23 @@ viewWork : String -> Maybe (List ElmWork) -> List (Html Msg)
 viewWork projectName maybeWorks =
     case maybeWorks of
         Just works ->
-            let toLi work = li [] [
+            let toLi work = tr [] [
                     case work.workId of
                       Just workId -> button [
                           onClick (FromUi (DeleteWorkButton projectName workId))
                         ] [ text "Delete"]
                       Nothing -> button [] []
-                  , span [] [ text (formatDate work.elmFrom)]
-                  , span [] [ text (maybeElmTo work.elmTo)]
-                  , span [] [ text work.notes]
+                  , td [] [ text (formatDate work.elmFrom)]
+                  , td [] [ text (maybeElmTo work.elmTo)]
+                  , td [] [ text (maybeHours work.hours)]
+                  , td [] [ text work.notes]
                   ]
                 maybeElmTo elmTo = case elmTo of
                   Nothing -> ""
                   Just to -> formatDate to
+                maybeHours hours = case hours of
+                  Nothing -> ""
+                  Just h -> fromFloat h
             in
             map toLi works
         _ -> []

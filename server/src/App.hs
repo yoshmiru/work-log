@@ -54,7 +54,8 @@ server sqliteFile = do
 apiServer :: ConnectionPool -> DB -> Server Api
 apiServer pool db =
       (listProjects pool :<|> postProject pool)
-  :<|> (listWorks pool :<|> getWorks pool :<|> deleteWork pool :<|> postWork pool)
+  :<|> (listWorks pool :<|> getWorks pool :<|> deleteWork pool
+    :<|> postWork pool)
   :<|> (listItem db
     :<|> getItem db
     :<|> postItem db
@@ -77,6 +78,7 @@ listWorks pool = liftIO $ flip runSqlPersistMPool pool $ do
 --      (utctDay from)
 --      (utctDayTime from)
       eFrom eTo
+      (maybeHour from to)
       (T.unpack note)
     eFrom = ElmDateTime (ElmDay 2020 1 1) (ElmTime 0 0)
     eTo = Just $ ElmDateTime (ElmDay 2020 1 1) (ElmTime 0 0)
@@ -93,17 +95,24 @@ listWorks pool = liftIO $ flip runSqlPersistMPool pool $ do
     keyToInt key = fromInt64 $ fromSqlKey key
   return $ map fromEntity entities
 
+maybeHour from to = case to of
+  Just t -> Just $ utcTimeDiff from t
+  Nothing -> Nothing
+
 getWorks :: ConnectionPool -> String -> Handler [ElmWork]
 getWorks pool projectName = liftIO $ flip runSqlPersistMPool pool $ do
     works <- selectList [ WorkProjectName ==. projectName ] [ Asc WorkFrom ]
-    return $ map toElmWork works
-      where
-        toElmWork (Entity wid (Work _ from to notes)) = ElmWork
+    return $ map (toElmWork projectName)  works
+
+
+toElmWork projectName (Entity wid (Work _ from to notes)) = ElmWork
           (Just $ toElmWorkId wid)
           projectName
           (toElmDateTime from)
           (toElmDateTimeTo to)
+          (maybeHour from to)
           (T.unpack notes)
+  where
         toElmDateTime (UTCTime day time) =
           ElmDateTime (toElmDay day) (toElmTime time)
         toElmDateTimeTo to = case to of
@@ -142,11 +151,11 @@ fromInt64 n = fromIntegral n
 toInt64 :: Int -> Int64
 toInt64 n = fromIntegral n
 
-postWork :: ConnectionPool -> ElmWork -> Handler ElmWork
+postWork :: ConnectionPool -> ElmWork -> Handler [ElmWork]
 postWork pool elmWork = liftIO $ flip runSqlPersistMPool pool $ do
-    let work = Work projectName from to notes
+    let work = Work projectName from to notes'
         projectName = elmProjeclName elmWork
-        notes = ""
+        notes' = T.pack $ notes elmWork
         from = UTCTime d t
           where
           d = case elmFrom elmWork of
@@ -163,10 +172,16 @@ postWork pool elmWork = liftIO $ flip runSqlPersistMPool pool $ do
         toDom (ElmDay year month dom) = fromGregorian year month dom
         toTimeOfDay (ElmTime hour min) = case makeTimeOfDayValid hour min 0 of
           Just timeOfDay -> timeOfDay
-        withElmWorkId workId (ElmWork _ projectName from to notes) =
-          ElmWork (Just workId) projectName from to notes
+        hours = case to of
+          Nothing -> Nothing
+          Just t -> Just $ utcTimeDiff from t
     workId <- insert work
-    return $ withElmWorkId (toElmWorkId workId) elmWork
+    works <- selectList [ WorkProjectName ==. projectName ] [ Asc WorkFrom ]
+    return $ map (toElmWork projectName) works
+
+utcTimeDiff from to =
+  let sec = fromRational $ toRational $ diffUTCTime to from
+  in sec / (60 * 60)
 
 toElmWorkId :: WorkId -> ElmWorkId
 toElmWorkId wid = ElmWorkId $ fromInt64 $ fromSqlKey wid

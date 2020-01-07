@@ -24,7 +24,7 @@ type Api =
         Get '[JSON] [ElmWork] :<|>
         Capture "projectName" String :> Get '[JSON] [ElmWork] :<|>
         Capture "elmWorkId" ElmWorkId :> Delete '[JSON] () :<|>
-        ReqBody '[JSON] ElmWork :> Post '[JSON] ElmWork) :<|>
+        ReqBody '[JSON] ElmWork :> Post '[JSON] [ElmWork]) :<|>
      "item" :> (Get '[JSON] [ItemId] :<|>
          Capture "itemId" ItemId :> Get '[JSON] Item :<|>
          ReqBody '[JSON] String :> Post '[JSON] ItemId :<|>
@@ -72,6 +72,7 @@ data ElmWork = ElmWork {
   elmProjeclName :: String,
   elmFrom :: ElmDateTime,
   elmTo :: Maybe ElmDateTime,
+  hours :: Maybe Float,
   notes :: String
 } deriving (Show, Eq)
 
