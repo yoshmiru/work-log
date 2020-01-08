@@ -16,7 +16,7 @@ dependencies:
   - string-conversions
   - persistent
   - persistent-template
-  - persistent-sqlite
+  - persistent-postgresql
   - text
   - time
 
