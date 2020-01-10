@@ -120,7 +120,7 @@ update msg model =
 
                 Works projectId works ->
                         let updater = \_ -> Just works
-                        in 
+                        in
                         ( { model | works = Dict.update projectId updater model.works }, Cmd.none)
 
         FromUi fromUi ->
@@ -142,7 +142,7 @@ update msg model =
                     let
                         mProjectId = case model.currentProject of
                             Just project -> project.projectId
-                            Nothing -> Nothing 
+                            Nothing -> Nothing
                         from = case model.addWorkFromInput of
                           Nothing -> let d = ElmDay 0 0 0
                                          t = ElmTime 0 0
@@ -204,7 +204,7 @@ update msg model =
                     ({ model | addWorkFromInput = parseDate t}, "" ++ (log "debug" t) |> \_ -> Cmd.none)
                 WorkInputTo t ->
                     ({ model | addWorkToInput = parseDate t}, "" ++ (log "debug" t) |> \_ -> Cmd.none)
-                WorkInputNotes t -> ({ model | addWorkNotesInput = t }, Cmd.none) 
+                WorkInputNotes t -> ({ model | addWorkNotesInput = t }, Cmd.none)
         Error error ->
             ( { model | error = Just error }, Cmd.none )
 
@@ -248,37 +248,14 @@ view model =
         items =
             List.map (viewItem << Tuple.second) (Dict.toList model.items)
         projects =
-            (option [] [text "Please select"]) :: List.map viewProject model.projects
+            (option [] [text "Please select"]) :: List.map viewProjectOpt model.projects
 
         error =
             model.error
                 |> Maybe.map viewError
                 |> Maybe.withDefault (Html.text "")
 
-        showProject project =  
-            let name = project.projectName
-                unitPrice = project.projectUnitPrice
-                unitPriceStr = fromInt unitPrice
-                mid = project.projectId
-                totalHours =
-                    let maybeHours work = case work.hours of
-                            Nothing -> 0
-                            Just n -> n
-                        hours = List.map maybeHours works
-                        works = case mid of
-                            Nothing -> []
-                            Just id ->case Dict.get id model.works of
-                                Nothing -> []
-                                Just ws -> ws
-                    in
-                        List.foldl (+) 0 hours
-             in div [] [
-                 span [] [text (name ++ " " ++ unitPriceStr)] 
-               , span [] [text (fromFloat totalHours)] 
-               , span [] [text " "] 
-               , span [] [text
-                       (fromFloat (totalHours * (toFloat unitPrice)))]
-                ]
+
     in
     div []
         [ ul [] items
@@ -297,7 +274,7 @@ view model =
             [ select [ onInput (FromUi << SelectProject) ] projects ]
         , case model.currentProject of
             Nothing -> text ""
-            Just project -> showProject project
+            Just project -> viewProject project model.works
         , viewWorks model
         ]
 
@@ -368,14 +345,38 @@ viewItem item =
         , button [ onClick (FromUi <| Done item.id) ] [ text "done" ]
         ]
 
-viewProject : ElmProject -> Html Msg
-viewProject project =
+viewProjectOpt : ElmProject -> Html Msg
+viewProjectOpt project =
     let projectId = case project.projectId of
             Nothing -> ""
             Just pid -> fromInt pid
     in
     option [ value projectId ]
         [ text project.projectName ]
+
+viewProject : ElmProject -> Dict ElmProjectId (List ElmWork) -> Html Msg
+viewProject project allWorks =
+    let name = project.projectName
+        unitPrice = project.projectUnitPrice
+        unitPriceStr = fromInt unitPrice
+        totalHours =
+            let maybeHours work = case work.hours of
+                            Nothing -> 0
+                            Just n -> n
+                hours = List.map maybeHours works
+                works = case project.projectId of
+                    Nothing -> []
+                    Just id -> case Dict.get id allWorks of
+                        Nothing -> []
+                        Just ws -> ws
+            in
+                List.foldl (+) 0 hours
+    in div [] [
+        String.join " "  [
+                name, unitPriceStr, (fromFloat totalHours)
+              , (fromFloat (totalHours * (toFloat unitPrice)))
+            ] |> text
+        ]
 
 
 viewError : String -> Html msg
