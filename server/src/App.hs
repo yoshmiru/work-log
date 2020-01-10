@@ -61,10 +61,12 @@ apiServer pool db =
     :<|> postItem db
     :<|> deleteItem db)
 
-listProjects :: ConnectionPool -> Handler [Project]
+listProjects :: ConnectionPool -> Handler [ElmProject]
 listProjects pool = liftIO $ flip runSqlPersistMPool pool $ do
   maybeProjects <- selectList [] []
-  let projects = map (\entity@(Entity _ project) -> project) maybeProjects
+  let projects = map toElmProject maybeProjects
+      toElmProject (Entity pid (Project projectName projectUnitPrice)) =
+        ElmProject (Just $ toElmProjectId pid) (T.unpack projectName) projectUnitPrice
   return projects
 
 listWorks :: ConnectionPool -> Handler [ElmWork]
@@ -72,9 +74,9 @@ listWorks pool = liftIO $ flip runSqlPersistMPool pool $ do
   entities <- selectList [WorkNote ==. ""] []
   let
     fromEntity (Entity workId work) = toElmWork workId work
-    toElmWork workId (Work projectName from to note) = ElmWork
+    toElmWork workId (Work projectId from to note) = ElmWork
       (toElmWorkId workId)
-      projectName
+      (toElmProjectId projectId)
 --      (utctDay from)
 --      (utctDayTime from)
       eFrom eTo
@@ -83,7 +85,6 @@ listWorks pool = liftIO $ flip runSqlPersistMPool pool $ do
     eFrom = ElmDateTime (ElmDay 2020 1 1) (ElmTime 0 0)
     eTo = Just $ ElmDateTime (ElmDay 2020 1 1) (ElmTime 0 0)
     toElmWorkId key = Just $ ElmWorkId $ keyToInt key
-    toElmProjectId key = ElmProjectId $ keyToInt key
     maybeDay to = case to of
       Just d -> Just $ utctDay d
       _ -> Nothing
@@ -92,22 +93,27 @@ listWorks pool = liftIO $ flip runSqlPersistMPool pool $ do
       _ -> Nothing
     toElmTime (Just t) = (0, 0)
     toElmDay (Just t) = (0, 0, 0)
-    keyToInt key = fromInt64 $ fromSqlKey key
+
   return $ map fromEntity entities
+
+keyToInt key = fromInt64 $ fromSqlKey key
+toElmProjectId key = ElmProjectId $ keyToInt key
 
 maybeHour from to = case to of
   Just t -> Just $ utcTimeDiff from t
   Nothing -> Nothing
 
-getWorks :: ConnectionPool -> String -> Handler [ElmWork]
-getWorks pool projectName = liftIO $ flip runSqlPersistMPool pool $ do
-    works <- selectList [ WorkProjectName ==. projectName ] [ Asc WorkFrom ]
-    return $ map (toElmWork projectName)  works
+getWorks :: ConnectionPool -> ElmProjectId -> Handler [ElmWork]
+getWorks pool elmProjectId = liftIO $ flip runSqlPersistMPool pool $ do
+    let projectId = fromElmProjectId elmProjectId
+    works <- selectList [ WorkProjectId ==. projectId ] [ Asc WorkFrom ]
+    return $ map toElmWork works
 
 
-toElmWork projectName (Entity wid (Work _ from to notes)) = ElmWork
+toElmWork :: Entity Work -> ElmWork
+toElmWork (Entity wid (Work projectId from to notes)) = ElmWork
           (Just $ toElmWorkId wid)
-          projectName
+          elmProjectId
           (toElmDateTime from)
           (toElmDateTimeTo to)
           (maybeHour from to)
@@ -123,6 +129,7 @@ toElmWork projectName (Entity wid (Work _ from to notes)) = ElmWork
           (year, month, dom) -> ElmDay year month dom
         toElmTime diffTime = case timeToTimeOfDay diffTime of
             (TimeOfDay hour min _) -> ElmTime hour min
+        elmProjectId = toElmProjectId projectId
 
 listItem :: DB -> Handler [ItemId]
 listItem db = liftIO $ allItemIds db
@@ -151,10 +158,13 @@ fromInt64 n = fromIntegral n
 toInt64 :: Int -> Int64
 toInt64 n = fromIntegral n
 
+fromElmProjectId :: ElmProjectId -> ProjectId
+fromElmProjectId (ElmProjectId id) = toSqlKey $ toInt64 $ id
+
 postWork :: ConnectionPool -> ElmWork -> Handler [ElmWork]
 postWork pool elmWork = liftIO $ flip runSqlPersistMPool pool $ do
-    let work = Work projectName from to notes'
-        projectName = elmProjeclName elmWork
+    let work = Work projectId from to notes'
+        projectId = fromElmProjectId $ elmProjectId elmWork
         notes' = T.pack $ notes elmWork
         from = UTCTime d t
           where
@@ -176,8 +186,8 @@ postWork pool elmWork = liftIO $ flip runSqlPersistMPool pool $ do
           Nothing -> Nothing
           Just t -> Just $ utcTimeDiff from t
     workId <- insert work
-    works <- selectList [ WorkProjectName ==. projectName ] [ Asc WorkFrom ]
-    return $ map (toElmWork projectName) works
+    works <- selectList [ WorkProjectId ==. projectId ] [ Asc WorkFrom ]
+    return $ map toElmWork works
 
 utcTimeDiff from to =
   let sec = fromRational $ toRational $ diffUTCTime to from

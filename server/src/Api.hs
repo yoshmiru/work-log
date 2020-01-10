@@ -18,11 +18,11 @@ import Models
 type Api =
   "api" :>
     ("project" :> (
-        Get '[JSON] [Project] :<|>
+        Get '[JSON] [ElmProject] :<|>
         ReqBody '[JSON] Project :> Post '[JSON] ()) :<|>
      "work" :> (
         Get '[JSON] [ElmWork] :<|>
-        Capture "projectName" String :> Get '[JSON] [ElmWork] :<|>
+        Capture "projectId" ElmProjectId :> Get '[JSON] [ElmWork] :<|>
         Capture "elmWorkId" ElmWorkId :> Delete '[JSON] () :<|>
         ReqBody '[JSON] ElmWork :> Post '[JSON] [ElmWork]) :<|>
      "item" :> (Get '[JSON] [ItemId] :<|>
@@ -67,9 +67,16 @@ data ElmTime = ElmTime {
   min :: Int
 } deriving (Show, Eq)
 
+data ElmProject = ElmProject {
+  projectId :: Maybe ElmProjectId,
+  projectName :: String,
+  projectUnitPrice :: Int
+} deriving (Show, Eq)
+
+
 data ElmWork = ElmWork {
   workId :: Maybe ElmWorkId,
-  elmProjeclName :: String,
+  elmProjectId :: ElmProjectId,
   elmFrom :: ElmDateTime,
   elmTo :: Maybe ElmDateTime,
   hours :: Maybe Float,
@@ -77,6 +84,7 @@ data ElmWork = ElmWork {
 } deriving (Show, Eq)
 
 Elm.Derive.deriveBoth Elm.Derive.defaultOptions ''Project
+Elm.Derive.deriveBoth Elm.Derive.defaultOptions ''ElmProject
 Elm.Derive.deriveBoth Elm.Derive.defaultOptions ''ElmProjectId
 Elm.Derive.deriveBoth Elm.Derive.defaultOptions ''ElmDateTime
 Elm.Derive.deriveBoth Elm.Derive.defaultOptions ''ElmDay

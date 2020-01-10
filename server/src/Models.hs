@@ -29,7 +29,7 @@ Project
   UniqueName name
   deriving Eq Read Show
 Work
-  projectName String
+  projectId ProjectId
   from UTCTime
   to UTCTime Maybe
   note Text

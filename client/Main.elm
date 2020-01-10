@@ -27,15 +27,15 @@ main =
 
 type alias Model =
     { items : Dict Int Item
-    , projects : List Project
+    , projects : List ElmProject
     , addProjectInput : String
     , addProjectUnitPriceInput : Int
     , addWorkProjectNameInput : String
     , addWorkFromInput : Maybe ElmDateTime
     , addWorkToInput : Maybe ElmDateTime
     , addWorkNotesInput : String
-    , currentProject : Maybe Project
-    , works : Dict String (List ElmWork)
+    , currentProject : Maybe ElmProject
+    , works : Dict ElmProjectId (List ElmWork)
     , error : Maybe String
     }
 
@@ -60,12 +60,11 @@ type Msg
 type FromServer
     = Initial (List ItemId)
     | InitialProjects ()
-    | Projects (List Project)
+    | Projects (List ElmProject)
     | NewItem Item
     | Delete ItemId
-    | DeleteWork String ElmWorkId
-    | PutWork String ElmWork
-    | Works String  (List ElmWork)
+    | DeleteWork ElmProjectId ElmWorkId
+    | Works ElmProjectId  (List ElmWork)
 
 
 type FromUi
@@ -73,7 +72,7 @@ type FromUi
     | AddProjectUnitPriceInputChange String
     | AddProjectButton
     | AddWorkButton
-    | DeleteWorkButton String ElmWorkId
+    | DeleteWorkButton ElmProjectId ElmWorkId
     | Done ItemId
     | SelectProject String
     | WorkInputFrom String
@@ -107,38 +106,29 @@ update msg model =
                     , Cmd.none
                     )
 
-                DeleteWork projectName id ->
-                  let works = case Dict.get projectName model.works of
+                DeleteWork projectId id ->
+                  let works = case Dict.get projectId model.works of
                         Just ws -> List.filter (\work -> work.workId /= Just id) ws
                         _ -> []
                       updater = \mWorks -> case mWorks of
                         Just _ -> Just works
                         _ -> Nothing
                   in
-                    ( { model | works = Dict.update projectName updater model.works }
+                    ( { model | works = Dict.update projectId updater model.works }
                     , Cmd.none
                     )
 
-                PutWork projectName work ->
-                    ( { model | works =
-                        let updater = \mCurrent -> case mCurrent of
-                                Just current -> Just (work::current)
-                                Nothing -> Nothing
-                        in Dict.update projectName updater model.works 
-                    }
-                    , Cmd.none
-                    )
-                Works projectName works ->
+                Works projectId works ->
                         let updater = \_ -> Just works
                         in 
-                        ( { model | works = Dict.update projectName updater model.works }, Cmd.none)
+                        ( { model | works = Dict.update projectId updater model.works }, Cmd.none)
 
         FromUi fromUi ->
             case fromUi of
                 AddProjectButton ->
                     let
-                        projectName =
-                            model.addProjectInput
+                        projectName = model.addProjectInput
+                        projectUnitPrice = model.addProjectUnitPriceInput
                     in
                     if projectName == "" then
                         update (Error "empty field") model
@@ -150,9 +140,9 @@ update msg model =
 
                 AddWorkButton ->
                     let
-                        projectName = case model.currentProject of
-                            Just project -> project.projectName
-                            Nothing -> ""
+                        mProjectId = case model.currentProject of
+                            Just project -> project.projectId
+                            Nothing -> Nothing 
                         from = case model.addWorkFromInput of
                           Nothing -> let d = ElmDay 0 0 0
                                          t = ElmTime 0 0
@@ -160,8 +150,11 @@ update msg model =
                           Just f -> f
                         to = model.addWorkToInput
                         notes = model.addWorkNotesInput
+                        next = case mProjectId of
+                            Nothing -> Cmd.none
+                            Just projectId -> postApiWork (ElmWork Nothing projectId from to Nothing notes) (fromServer (\(works) -> Works projectId works))
                     in
-                    ( model, postApiWork (ElmWork Nothing projectName from to Nothing notes) (fromServer (\(works) -> Works projectName works)))
+                    ( model, next)
 
                 AddProjectInputChange t ->
                     ( { model | addProjectInput = t, error = Nothing }
@@ -180,25 +173,33 @@ update msg model =
                             , Cmd.none
                             )
 
-                DeleteWorkButton projectName id ->
+                DeleteWorkButton projectId id ->
                     ( model
-                    , deleteApiWorkByElmWorkId id (fromServer (\() -> DeleteWork projectName id))
+                    , deleteApiWorkByElmWorkId id (fromServer (\() -> DeleteWork projectId id))
                     )
 
                 Done id ->
                     ( model
                     , deleteApiItemByItemId id (fromServer (\() -> Delete id))
                     )
-                SelectProject projectName ->
-                    let find projects = filter_ projects |> head
-                        filter_ projects = filter byName projects
-                        byName = \p -> p.projectName == projectName
-                        maybeFetch = case Dict.get projectName model.works of
-                            Just [] -> getApiWorkByProjectName projectName (fromServer (Works projectName))
-                            Nothing -> getApiWorkByProjectName projectName (fromServer (Works projectName))
+                SelectProject projectIdStr ->
+                    let find projectId projects =
+                            let
+                                filter_ = filter byId projects
+                                byId = \p -> case p.projectId of
+                                   Nothing -> False
+                                   Just pid -> pid == projectId
+                            in filter_ |> head
+                        mProjectId = toInt projectIdStr
+                        maybeFetch projectId = case Dict.get projectId model.works of
+                            Just [] -> getApiWorkByProjectId projectId (fromServer (Works projectId))
+                            Nothing -> getApiWorkByProjectId projectId (fromServer (Works projectId))
                             Just works -> Cmd.none
                     in
-                        ( { model | currentProject = find model.projects }, maybeFetch )
+                        case mProjectId of
+                            Nothing -> (model, Cmd.none)
+                            Just projectId ->
+                                ( { model | currentProject = find projectId model.projects }, maybeFetch projectId )
                 WorkInputFrom t ->
                     ({ model | addWorkFromInput = parseDate t}, "" ++ (log "debug" t) |> \_ -> Cmd.none)
                 WorkInputTo t ->
@@ -253,13 +254,31 @@ view model =
             model.error
                 |> Maybe.map viewError
                 |> Maybe.withDefault (Html.text "")
-        projectName = case model.currentProject of
-            Just project -> project.projectName
-            _ -> ""
-        projectUnitPrice = case model.currentProject of
-            Just project -> fromInt(project.projectUnitPrice)
-            _ -> ""
 
+        showProject project =  
+            let name = project.projectName
+                unitPrice = project.projectUnitPrice
+                unitPriceStr = fromInt unitPrice
+                mid = project.projectId
+                totalHours =
+                    let maybeHours work = case work.hours of
+                            Nothing -> 0
+                            Just n -> n
+                        hours = List.map maybeHours works
+                        works = case mid of
+                            Nothing -> []
+                            Just id ->case Dict.get id model.works of
+                                Nothing -> []
+                                Just ws -> ws
+                    in
+                        List.foldl (+) 0 hours
+             in div [] [
+                 span [] [text (name ++ " " ++ unitPriceStr)] 
+               , span [] [text (fromFloat totalHours)] 
+               , span [] [text " "] 
+               , span [] [text
+                       (fromFloat (totalHours * (toFloat unitPrice)))]
+                ]
     in
     div []
         [ ul [] items
@@ -276,64 +295,70 @@ view model =
         , error
         , div []
             [ select [ onInput (FromUi << SelectProject) ] projects ]
-        , div [] [text (projectName ++ " " ++ projectUnitPrice)] 
+        , case model.currentProject of
+            Nothing -> text ""
+            Just project -> showProject project
         , viewWorks model
         ]
 
 viewWorks : Model -> Html Msg
 viewWorks model =
     case model.currentProject of
-        Just project -> let projectName = project.projectName
-                            works = model.works
+        Nothing -> text "Please select a project"
+        Just project ->
+            let maybeProjectId = project.projectId
+                works = model.works
             in
-                div [] [
-                input [
-                  type_ "datetime-local", placeholder "From"
-                , onInput (FromUi << WorkInputFrom)
-                ] [],
-                input [
-                  type_ "datetime-local", placeholder "To"
-                , onInput (FromUi << WorkInputTo)
-                ] [],
-                textarea [
-                  placeholder "Notes"
-                , onInput (FromUi << WorkInputNotes)
-                ] [],
-                button [onClick (FromUi AddWorkButton)] [text "add work"],
-                table [] ([tr [] [
-                  th [] [text ""]
-                , th [] [text "From"]
-                , th [] [text "To"]
-                , th [] [text "Hours"]
-                , th [] [text "Notes"]
-                  ]] ++ viewWork projectName (Dict.get projectName works))
-            ]
-        _ -> text "Please select a project"
+                case maybeProjectId of
+                    Nothing -> text "Something wrong"
+                    Just projectId ->
+                        div [] [
+                        input [
+                          type_ "datetime-local", placeholder "From"
+                        , onInput (FromUi << WorkInputFrom)
+                        ] [],
+                        input [
+                          type_ "datetime-local", placeholder "To"
+                        , onInput (FromUi << WorkInputTo)
+                        ] [],
+                        textarea [
+                          placeholder "Notes"
+                        , onInput (FromUi << WorkInputNotes)
+                        ] [],
+                        button [onClick (FromUi AddWorkButton)] [text "add work"],
+                        table [] ([tr [] [
+                          th [] [text ""]
+                        , th [] [text "From"]
+                        , th [] [text "To"]
+                        , th [] [text "Hours"]
+                        , th [] [text "Notes"]
+                          ]] ++ viewWork projectId (Dict.get projectId works))
+                        ]
 
-viewWork : String -> Maybe (List ElmWork) -> List (Html Msg)
-viewWork projectName maybeWorks =
-    case maybeWorks of
-        Just works ->
-            let toLi work = tr [] [
-                    case work.workId of
-                      Just workId -> button [
-                          onClick (FromUi (DeleteWorkButton projectName workId))
-                        ] [ text "Delete"]
-                      Nothing -> button [] []
-                  , td [] [ text (formatDate work.elmFrom)]
-                  , td [] [ text (maybeElmTo work.elmTo)]
-                  , td [] [ text (maybeHours work.hours)]
-                  , td [] [ text work.notes]
-                  ]
-                maybeElmTo elmTo = case elmTo of
-                  Nothing -> ""
-                  Just to -> formatDate to
-                maybeHours hours = case hours of
-                  Nothing -> ""
-                  Just h -> fromFloat h
-            in
-            map toLi works
-        _ -> []
+viewWork : ElmProjectId -> Maybe (List ElmWork) -> List (Html Msg)
+viewWork projectId maybeWorks =
+        case maybeWorks of
+            Nothing -> []
+            Just works ->
+                let toLi work = tr [] [
+                        case work.workId of
+                          Just workId -> button [
+                              onClick (FromUi (DeleteWorkButton projectId workId))
+                            ] [ text "Delete"]
+                          Nothing -> button [] []
+                      , td [] [ text (formatDate work.elmFrom)]
+                      , td [] [ text (maybeElmTo work.elmTo)]
+                      , td [] [ text (maybeHours work.hours)]
+                      , td [] [ text work.notes]
+                      ]
+                    maybeElmTo elmTo = case elmTo of
+                      Nothing -> ""
+                      Just to -> formatDate to
+                    maybeHours hours = case hours of
+                      Nothing -> ""
+                      Just h -> fromFloat h
+                in
+                map toLi works
 
 viewItem : Item -> Html Msg
 viewItem item =
@@ -343,9 +368,13 @@ viewItem item =
         , button [ onClick (FromUi <| Done item.id) ] [ text "done" ]
         ]
 
-viewProject : Project -> Html Msg
+viewProject : ElmProject -> Html Msg
 viewProject project =
-    option [ value project.projectName ]
+    let projectId = case project.projectId of
+            Nothing -> ""
+            Just pid -> fromInt pid
+    in
+    option [ value projectId ]
         [ text project.projectName ]
 
 
