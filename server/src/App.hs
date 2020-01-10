@@ -11,7 +11,8 @@ import           Control.Monad.Trans.Except
 import           Data.Map hiding (delete, insert, map)
 import qualified Data.Map as M
 import           Database.Persist
-import           Database.Persist.Sqlite ( ConnectionPool, createSqlitePool
+import           Database.Persist.Postgresql ( ConnectionPool, createPostgresqlPool
+--import           Database.Persist.Sqlite ( ConnectionPool, createSqlitePool
                                          , runSqlPool, runSqlPersistMPool
                                          , runMigration, selectList, (==.)
                                          , insert , entityVal
@@ -40,11 +41,11 @@ options = Options "client"
 app :: FilePath -> IO Application
 app sqliteFile = serve withAssets <$> server sqliteFile
 
-server :: FilePath -> IO (Server WithAssets)
-server sqliteFile = do
+server :: String -> IO (Server WithAssets)
+server connStr = do
   assets <- serveAssets options
   pool <- runStderrLoggingT $ do
-    createSqlitePool (cs sqliteFile) 5
+    createPostgresqlPool (cs connStr) 5
 
   runSqlPool (runMigration migrateAll) pool
   db <- mkDB

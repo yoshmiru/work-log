@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 6bc753904ec9ce12ba666a5a7f34de35a0841dbd8e3b355313b5134995f5951d
+-- hash: 2885699be12a3b5c790a568ba16ce8b28befd59a0fd3e9ec2742af72e9d0dac0
 
 name:           example-servant-elm
 version:        0.0.0
@@ -26,7 +26,7 @@ executable server
     , elm-bridge >=0.5.2
     , monad-logger
     , persistent
-    , persistent-sqlite
+    , persistent-postgresql
     , persistent-template
     , servant
     , servant-elm >=0.6.0.2
@@ -63,7 +63,7 @@ test-suite spec
     , http-types
     , monad-logger
     , persistent
-    , persistent-sqlite
+    , persistent-postgresql
     , persistent-template
     , servant
     , servant-client
