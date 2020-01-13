@@ -137,7 +137,7 @@ update msg model =
 
                     else
                         ( { model | addProjectInput = "" }
-                        , postApiProject (Project projectName 3000) (fromServer InitialProjects)
+                        , postApiProject (Project projectName projectUnitPrice) (fromServer InitialProjects)
                         )
 
                 AddWorkButton ->
