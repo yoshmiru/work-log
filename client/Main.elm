@@ -36,13 +36,14 @@ type alias Model =
     , addWorkNotesInput : String
     , currentProject : Maybe ElmProject
     , works : Dict ElmProjectId (List ElmWork)
+    , notes : String
     , error : Maybe String
     }
 
 
 init : ( Model, Cmd Msg )
 init =
-    ( Model Dict.empty [] "" 0 "" Nothing Nothing "" Nothing Dict.empty Nothing
+    ( Model Dict.empty [] "" 0 "" Nothing Nothing "" Nothing Dict.empty "" Nothing
     , Api.getApiItem (fromServer Initial)
     )
 
@@ -78,6 +79,7 @@ type FromUi
     | WorkInputFrom String
     | WorkInputTo String
     | WorkInputNotes String
+    | ClickNotes String
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -205,6 +207,9 @@ update msg model =
                 WorkInputTo t ->
                     ({ model | addWorkToInput = parseDate t}, "" ++ (log "debug" t) |> \_ -> Cmd.none)
                 WorkInputNotes t -> ({ model | addWorkNotesInput = t }, Cmd.none)
+
+                ClickNotes notes -> ({model | notes = notes}, Cmd.none)
+
         Error error ->
             ( { model | error = Just error }, Cmd.none )
 
@@ -248,13 +253,22 @@ view model =
         items =
             List.map (viewItem << Tuple.second) (Dict.toList model.items)
         projects =
-            (option [] [text "Please select"]) :: List.map viewProjectOpt model.projects
+            (option
+                []
+                [text "Please select"]) :: List.map viewProjectOpt model.projects
 
         error =
             model.error
                 |> Maybe.map viewError
                 |> Maybe.withDefault (Html.text "")
 
+        works = case model.currentProject of
+            Nothing -> []
+            Just p -> case p.projectId of
+                Nothing -> []
+                Just pid -> case Dict.get pid model.works of
+                    Nothing -> []
+                    Just ws -> ws
 
     in
     div []
@@ -275,8 +289,21 @@ view model =
         , case model.currentProject of
             Nothing -> text ""
             Just project -> viewProject project model.works
+        , viewNotes model.notes works
         , viewWorks model
         ]
+
+viewNotes : String -> List ElmWork -> Html Msg
+viewNotes mNotes works =
+    case mNotes  of
+        "" -> text ""
+        notes ->
+            let filterByNotes = List.filter byNotes works
+                byNotes work = work.notes == notes
+                hours = List.map (\w -> Maybe.withDefault 0 w.hours) filterByNotes
+                sum = List.foldl (+) 0 hours
+            in
+                div [] [ text <| (++) notes <| (++) ": " <| fromFloat sum ]
 
 viewWorks : Model -> Html Msg
 viewWorks model =
@@ -326,7 +353,7 @@ viewWork projectId maybeWorks =
                       , td [] [ text (formatDate work.elmFrom)]
                       , td [] [ text (maybeElmTo work.elmTo)]
                       , td [] [ text (maybeHours work.hours)]
-                      , td [] [ text work.notes]
+                      , td [ onClick (FromUi <| ClickNotes work.notes) ] [ text work.notes]
                       ]
                     maybeElmTo elmTo = case elmTo of
                       Nothing -> ""
