@@ -1,4 +1,4 @@
-name: example-servant-elm
+name: work-log
 
 dependencies:
   - base
@@ -19,6 +19,7 @@ dependencies:
   - persistent-postgresql
   - text
   - time
+  - yaml
 
 executables:
   server:
