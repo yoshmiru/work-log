@@ -4,6 +4,8 @@ import Api exposing (..)
 import Browser
 import Debug exposing (log)
 import Dict exposing (Dict)
+import FormatNumber exposing (format)
+import FormatNumber.Locales exposing (usLocale)
 import Html exposing (Html, button, div, input, li, option, select, span, table, tr, th, td, text, textarea, ul)
 import Html.Attributes exposing (placeholder, type_, value)
 import Html.Events exposing (onClick, onInput)
@@ -301,9 +303,9 @@ viewNotes mNotes works =
             let filterByNotes = List.filter byNotes works
                 byNotes work = work.notes == notes
                 hours = List.map (\w -> Maybe.withDefault 0 w.hours) filterByNotes
-                sum = List.foldl (+) 0 hours
+                sum = format usLocale <| List.foldl (+) 0 hours
             in
-                div [] [ text <| (++) notes <| (++) ": " <| fromFloat sum ]
+                div [] [ text <| (++) notes <| (++) ": " <| sum ]
 
 viewWorks : Model -> Html Msg
 viewWorks model =
@@ -360,7 +362,7 @@ viewWork projectId maybeWorks =
                       Just to -> formatDate to
                     maybeHours hours = case hours of
                       Nothing -> ""
-                      Just h -> fromFloat h
+                      Just h -> format ({usLocale | decimals = 2}) h
                 in
                 map toLi works
 
@@ -385,7 +387,7 @@ viewProject : ElmProject -> Dict ElmProjectId (List ElmWork) -> Html Msg
 viewProject project allWorks =
     let name = project.projectName
         unitPrice = project.projectUnitPrice
-        unitPriceStr = fromInt unitPrice
+        unitPriceStr = format usLocale <| toFloat unitPrice
         totalHours =
             let maybeHours work = case work.hours of
                             Nothing -> 0
@@ -400,8 +402,8 @@ viewProject project allWorks =
                 List.foldl (+) 0 hours
     in div [] [
         String.join " "  [
-                name, unitPriceStr, (fromFloat totalHours)
-              , (fromFloat (totalHours * (toFloat unitPrice)))
+                name, unitPriceStr, format usLocale totalHours
+              , format usLocale <| (*) totalHours <| toFloat unitPrice
             ] |> text
         ]
 
@@ -427,7 +429,7 @@ parseDate t =
 formatDate : ElmDateTime -> String
 formatDate dt = case (dt.day, dt.time) of
     (d, t) -> case [d.year, d.month, d.dom, t.hour, t.min] of
-      datetimes -> case map fromInt datetimes of
+      datetimes -> case map (String.pad 2 '0' << fromInt) datetimes of
         [year, month, dom, hour, min] -> case [[year, month, dom], [hour, min]] of
           [day, time] -> (join "-" day) ++ " " ++ (join ":" time)
           _ -> ""
