@@ -13,3 +13,4 @@ nix:
   enable: true
   packages:
       - "postgresql"
+      - "zlib"

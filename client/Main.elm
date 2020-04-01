@@ -37,6 +37,7 @@ type alias Model =
     , addWorkToInput : Maybe ElmDateTime
     , addWorkNotesInput : String
     , currentProject : Maybe ElmProject
+    , showSummary : Bool
     , works : Dict ElmProjectId (List ElmWork)
     , notes : String
     , error : Maybe String
@@ -45,7 +46,7 @@ type alias Model =
 
 init : ( Model, Cmd Msg )
 init =
-    ( Model Dict.empty [] "" 0 "" Nothing Nothing "" Nothing Dict.empty "" Nothing
+    ( Model Dict.empty [] "" 0 "" Nothing Nothing "" Nothing False Dict.empty "" Nothing
     , Api.getApiItem (fromServer Initial)
     )
 
@@ -78,6 +79,7 @@ type FromUi
     | DeleteWorkButton ElmProjectId ElmWorkId
     | Done ItemId
     | SelectProject String
+    | ShowSummaryButton Bool
     | WorkInputFrom String
     | WorkInputTo String
     | WorkInputNotes String
@@ -204,6 +206,8 @@ update msg model =
                             Nothing -> (model, Cmd.none)
                             Just projectId ->
                                 ( { model | currentProject = find projectId model.projects }, maybeFetch projectId )
+                ShowSummaryButton v ->
+                    ({model | showSummary = v}, Cmd.none)
                 WorkInputFrom t ->
                     ({ model | addWorkFromInput = parseDate t}, "" ++ (log "debug" t) |> \_ -> Cmd.none)
                 WorkInputTo t ->
@@ -284,7 +288,7 @@ view model =
             placeholder "Unit Price",
             onInput (FromUi << AddProjectUnitPriceInputChange)
             ] []
-        , button [ onClick (FromUi AddProjectButton) ] [ text "add project" ]
+        , button [ onClick (FromUi AddProjectButton) ] [ text "Add project" ]
         , error
         , div []
             [ select [ onInput (FromUi << SelectProject) ] projects ]
@@ -294,6 +298,15 @@ view model =
         , viewNotes model.notes works
         , viewWorks model
         ]
+
+sumWorks : List ElmWork -> List(String, Float)
+sumWorks works =
+    let filterByNotes notes = List.filter (byNotes notes) works
+        byNotes notes work = work.notes == notes
+        hours notes = List.map (\w -> Maybe.withDefault 0 w.hours) (filterByNotes notes)
+        summary notes = List.foldl (+) 0 (hours notes)
+        sum work = (work.notes, summary work.notes)
+    in List.map sum works |> Dict.fromList |> Dict.toList
 
 viewNotes : String -> List ElmWork -> Html Msg
 viewNotes mNotes works =
@@ -314,6 +327,7 @@ viewWorks model =
         Just project ->
             let maybeProjectId = project.projectId
                 works = model.works
+                showSummary = model.showSummary
             in
                 case maybeProjectId of
                     Nothing -> text "Something wrong"
@@ -331,15 +345,45 @@ viewWorks model =
                           placeholder "Notes"
                         , onInput (FromUi << WorkInputNotes)
                         ] [],
-                        button [onClick (FromUi AddWorkButton)] [text "add work"],
-                        table [] ([tr [] [
-                          th [] [text ""]
-                        , th [] [text "From"]
-                        , th [] [text "To"]
-                        , th [] [text "Hours"]
-                        , th [] [text "Notes"]
-                          ]] ++ viewWork projectId (Dict.get projectId works))
+                        button [onClick (FromUi AddWorkButton)] [text "Add work"],
+                        (if showSummary then
+                            viewSummary projectId (Dict.get projectId works)
+                        else
+                            viewDetail projectId (Dict.get projectId works))
+                        
                         ]
+
+
+viewSummary : ElmProjectId -> Maybe (List ElmWork) -> Html Msg
+viewSummary projectId maybeWorks =
+    let summaries = case maybeWorks of
+            Nothing -> []
+            Just works ->
+                let
+                    sums = sumWorks works
+                    show (notes, hours) = tr [] [
+                        td [] [text notes]
+                      , td [] [text (format usLocale hours)]
+                        ]
+                in
+                    List.map show sums
+    in
+        div [] [
+            button [onClick <| FromUi <| ShowSummaryButton False] [text "Show detail"]
+          , table [] summaries
+            ]
+
+viewDetail : ElmProjectId -> Maybe (List ElmWork) -> Html Msg
+viewDetail projectId maybeWorks = div [] [
+    button [onClick <| FromUi <| ShowSummaryButton True] [text "Show summary"],
+    table [] ([tr [] [
+        th [] [text ""]
+        , th [] [text "From"]
+        , th [] [text "To"]
+        , th [] [text "Hours"]
+        , th [] [text "Notes"]
+        ]] ++ viewWork projectId maybeWorks)
+        ]
 
 viewWork : ElmProjectId -> Maybe (List ElmWork) -> List (Html Msg)
 viewWork projectId maybeWorks =
