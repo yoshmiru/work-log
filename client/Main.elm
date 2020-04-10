@@ -6,7 +6,7 @@ import Debug exposing (log)
 import Dict exposing (Dict)
 import FormatNumber exposing (format)
 import FormatNumber.Locales exposing (usLocale)
-import Html exposing (Html, button, div, input, li, option, select, span, table, tr, th, td, text, textarea, ul)
+import Html exposing (Html, button, div, input, li, option, pre, select, span, table, tr, th, td, text, textarea, ul)
 import Html.Attributes exposing (placeholder, type_, value)
 import Html.Events exposing (onClick, onInput)
 import Http
@@ -362,7 +362,7 @@ viewSummary projectId maybeWorks =
                 let
                     sums = sumWorks works
                     show (notes, hours) = tr [] [
-                        td [] [text notes]
+                        td [] [ pre [] [ text notes ] ]
                       , td [] [text (format usLocale hours)]
                         ]
                 in
@@ -399,7 +399,7 @@ viewWork projectId maybeWorks =
                       , td [] [ text (formatDate work.elmFrom)]
                       , td [] [ text (maybeElmTo work.elmTo)]
                       , td [] [ text (maybeHours work.hours)]
-                      , td [ onClick (FromUi <| ClickNotes work.notes) ] [ text work.notes]
+                      , td [ onClick (FromUi <| ClickNotes work.notes) ] [ pre [] [ text work.notes ] ]
                       ]
                     maybeElmTo elmTo = case elmTo of
                       Nothing -> ""
