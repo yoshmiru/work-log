@@ -7,7 +7,7 @@ import Dict exposing (Dict)
 import FormatNumber exposing (format)
 import FormatNumber.Locales exposing (usLocale)
 import Html exposing (Html, button, div, input, li, option, pre, select, span, table, tr, th, td, text, textarea, ul)
-import Html.Attributes exposing (placeholder, type_, value)
+import Html.Attributes exposing (class, placeholder, style, type_, value)
 import Html.Events exposing (onClick, onInput)
 import Http
 import List exposing (filter, head, map)
@@ -277,26 +277,29 @@ view model =
                     Just ws -> ws
 
     in
-    div []
-        [ ul [] items
-        , input [
-            placeholder "Project Name",
-            onInput (FromUi << AddProjectInputChange), value model.addProjectInput
-            ] []
-        , input [
-            type_ "number",
-            placeholder "Unit Price",
-            onInput (FromUi << AddProjectUnitPriceInputChange)
-            ] []
-        , button [ onClick (FromUi AddProjectButton) ] [ text "Add project" ]
-        , error
-        , div []
-            [ select [ onInput (FromUi << SelectProject) ] projects ]
-        , case model.currentProject of
-            Nothing -> text ""
-            Just project -> viewProject project model.works
-        , viewNotes model.notes works
-        , viewWorks model
+    div [ class "section" ]
+        [
+        div [ class "container" ]
+            [ ul [] items
+            , myInput [
+                placeholder "Project Name",
+                onInput (FromUi << AddProjectInputChange), value model.addProjectInput
+                ]
+            , myInput [
+                type_ "number",
+                placeholder "Unit Price",
+                onInput (FromUi << AddProjectUnitPriceInputChange)
+                ]
+            , myButton [ onClick (FromUi AddProjectButton) ] [ text "Add project" ]
+            , error
+            , div []
+                [ mySelect [ class "select", onInput (FromUi << SelectProject) ] projects ]
+            , case model.currentProject of
+                Nothing -> text ""
+                Just project -> viewProject project model.works
+            , viewNotes model.notes works
+            , viewWorks model
+            ]
         ]
 
 sumWorks : List ElmWork -> List(String, Float)
@@ -320,6 +323,29 @@ viewNotes mNotes works =
             in
                 div [] [ text <| (++) notes <| (++) ": " <| sum ]
 
+
+formControl : Html Msg -> Html Msg
+formControl input = 
+    div [ class "field" ]
+        [
+            div [ class "control" ] [ input ]
+            ]
+
+myInput : List (Html.Attribute Msg) -> Html Msg
+myInput attrs =
+    formControl <|
+        input (attrs ++ [ class "input is-primary" ]) []
+
+mySelect : List (Html.Attribute Msg) -> List (Html Msg) -> Html Msg
+mySelect attrs options=
+    formControl <|
+        select (attrs ++ [ class "select is-primary" ]) options
+
+myButton : List (Html.Attribute Msg) -> List (Html Msg) -> Html Msg
+myButton attrs content =
+    formControl <|
+        button (attrs ++ [ class "button is-primary" ]) content
+
 viewWorks : Model -> Html Msg
 viewWorks model =
     case model.currentProject of
@@ -333,19 +359,20 @@ viewWorks model =
                     Nothing -> text "Something wrong"
                     Just projectId ->
                         div [] [
-                        input [
+                        myInput [
                           type_ "datetime-local", placeholder "From"
                         , onInput (FromUi << WorkInputFrom)
-                        ] [],
-                        input [
+                        ],
+                        myInput [
                           type_ "datetime-local", placeholder "To"
                         , onInput (FromUi << WorkInputTo)
-                        ] [],
+                        ],
                         textarea [
-                          placeholder "Notes"
+                          class "textarea"
+                        , placeholder "Notes"
                         , onInput (FromUi << WorkInputNotes)
                         ] [],
-                        button [onClick (FromUi AddWorkButton)] [text "Add work"],
+                        myButton [onClick (FromUi AddWorkButton)] [text "Add work"],
                         (if showSummary then
                             viewSummary projectId (Dict.get projectId works)
                         else
@@ -369,17 +396,17 @@ viewSummary projectId maybeWorks =
                     List.map show sums
     in
         div [] [
-            button [onClick <| FromUi <| ShowSummaryButton False] [text "Show detail"]
+            myButton [onClick <| FromUi <| ShowSummaryButton False] [text "Show detail"]
           , table [] summaries
             ]
 
 viewDetail : ElmProjectId -> Maybe (List ElmWork) -> Html Msg
 viewDetail projectId maybeWorks = div [] [
-    button [onClick <| FromUi <| ShowSummaryButton True] [text "Show summary"],
-    table [] ([tr [] [
+    myButton [onClick <| FromUi <| ShowSummaryButton True] [text "Show summary"],
+    table [class "table"] ([tr [] [
         th [] [text ""]
-        , th [] [text "From"]
-        , th [] [text "To"]
+        , th [style "min-width" "150px"] [text "From"]
+        , th [style "min-width" "150px"] [text "To"]
         , th [] [text "Hours"]
         , th [] [text "Notes"]
         ]] ++ viewWork projectId maybeWorks)
@@ -392,10 +419,10 @@ viewWork projectId maybeWorks =
             Just works ->
                 let toLi work = tr [] [
                         case work.workId of
-                          Just workId -> button [
+                          Just workId -> myButton [
                               onClick (FromUi (DeleteWorkButton projectId workId))
                             ] [ text "Delete"]
-                          Nothing -> button [] []
+                          Nothing -> myButton [] []
                       , td [] [ text (formatDate work.elmFrom)]
                       , td [] [ text (maybeElmTo work.elmTo)]
                       , td [] [ text (maybeHours work.hours)]
@@ -415,7 +442,7 @@ viewItem item =
     li []
         [ text item.text
         , text " - "
-        , button [ onClick (FromUi <| Done item.id) ] [ text "done" ]
+        , myButton [ onClick (FromUi <| Done item.id) ] [ text "done" ]
         ]
 
 viewProjectOpt : ElmProject -> Html Msg
@@ -444,12 +471,13 @@ viewProject project allWorks =
                         Just ws -> ws
             in
                 List.foldl (+) 0 hours
-    in div [] [
-        String.join " "  [
+    in div [ class "columns" ] (
+        List.map (\t -> div [ class "column" ]  [ text t ])
+            [
                 name, unitPriceStr, format usLocale totalHours
               , format usLocale <| (*) totalHours <| toFloat unitPrice
-            ] |> text
-        ]
+            ]
+        )
 
 
 viewError : String -> Html msg
