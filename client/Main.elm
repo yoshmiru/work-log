@@ -397,14 +397,14 @@ viewSummary projectId maybeWorks =
     in
         div [] [
             myButton [onClick <| FromUi <| ShowSummaryButton False] [text "Show detail"]
-          , table [] summaries
+          , table [class "table"] summaries
             ]
 
 viewDetail : ElmProjectId -> Maybe (List ElmWork) -> Html Msg
 viewDetail projectId maybeWorks = div [] [
     myButton [onClick <| FromUi <| ShowSummaryButton True] [text "Show summary"],
     table [class "table"] ([tr [] [
-        th [] [text ""]
+          th [] [text ""]
         , th [style "min-width" "150px"] [text "From"]
         , th [style "min-width" "150px"] [text "To"]
         , th [] [text "Hours"]
@@ -418,11 +418,13 @@ viewWork projectId maybeWorks =
             Nothing -> []
             Just works ->
                 let toLi work = tr [] [
-                        case work.workId of
+                        td [] [
+                          case work.workId of
                           Just workId -> myButton [
                               onClick (FromUi (DeleteWorkButton projectId workId))
                             ] [ text "Delete"]
                           Nothing -> myButton [] []
+                          ]
                       , td [] [ text (formatDate work.elmFrom)]
                       , td [] [ text (maybeElmTo work.elmTo)]
                       , td [] [ text (maybeHours work.hours)]
