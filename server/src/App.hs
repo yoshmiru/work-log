@@ -8,7 +8,7 @@ import           Control.Concurrent
 import           Control.Monad.IO.Class (MonadIO, liftIO)
 import           Control.Monad.Logger   (runStderrLoggingT)
 import           Control.Monad.Trans.Except
-import           Data.Map hiding (delete, insert, map)
+import           Data.Map hiding (delete, insert, map, update)
 import qualified Data.Map as M
 import           Database.Persist
 import           Database.Persist.Postgresql ( ConnectionPool, createPostgresqlPool
@@ -54,7 +54,7 @@ server connStr = do
 
 apiServer :: ConnectionPool -> DB -> Server Api
 apiServer pool db =
-      (listProjects pool :<|> postProject pool)
+      (listProjects pool :<|> postProject pool :<|> archiveProject pool)
   :<|> (listWorks pool :<|> getWorks pool :<|> deleteWork pool
     :<|> postWork pool)
   :<|> (listItem db
@@ -64,9 +64,9 @@ apiServer pool db =
 
 listProjects :: ConnectionPool -> Handler [ElmProject]
 listProjects pool = liftIO $ flip runSqlPersistMPool pool $ do
-  maybeProjects <- selectList [] []
+  maybeProjects <- selectList [ProjectArchived ==. False] []
   let projects = map toElmProject maybeProjects
-      toElmProject (Entity pid (Project projectName projectUnitPrice)) =
+      toElmProject (Entity pid (Project projectName projectUnitPrice _)) =
         ElmProject (Just $ toElmProjectId pid) (T.unpack projectName) projectUnitPrice
   return projects
 
@@ -145,6 +145,10 @@ postProject :: ConnectionPool -> Project -> Handler ()
 postProject pool new = liftIO $ flip runSqlPersistMPool pool $ do
   _ <- insert new
   return ()
+
+archiveProject :: ConnectionPool -> ElmProjectId -> Handler ()
+archiveProject pool elmProjectId = liftIO $ flip runSqlPersistMPool pool $
+  update (fromElmProjectId elmProjectId) [ProjectArchived =. True]
 
 deleteWork :: ConnectionPool -> ElmWorkId -> Handler ()
 deleteWork pool (ElmWorkId elmWorkId) = liftIO $ flip runSqlPersistMPool pool $

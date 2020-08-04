@@ -7,7 +7,7 @@ import Dict exposing (Dict)
 import FormatNumber exposing (format)
 import FormatNumber.Locales exposing (usLocale)
 import Html exposing (Html, button, div, input, li, option, pre, select, span, table, tr, th, td, text, textarea, ul)
-import Html.Attributes exposing (class, placeholder, style, type_, value)
+import Html.Attributes exposing (class, disabled, placeholder, style, type_, value)
 import Html.Events exposing (onClick, onInput)
 import Http
 import List exposing (filter, head, map)
@@ -76,6 +76,7 @@ type FromUi
     | AddProjectUnitPriceInputChange String
     | AddProjectButton
     | AddWorkButton
+    | Archive ElmProjectId
     | DeleteWorkButton ElmProjectId ElmWorkId
     | Done ItemId
     | SelectProject String
@@ -141,7 +142,7 @@ update msg model =
 
                     else
                         ( { model | addProjectInput = "" }
-                        , postApiProject (Project projectName projectUnitPrice) (fromServer InitialProjects)
+                        , postApiProject (Project projectName projectUnitPrice False) (fromServer InitialProjects)
                         )
 
                 AddWorkButton ->
@@ -179,6 +180,8 @@ update msg model =
                             , Cmd.none
                             )
 
+                Archive projectId ->
+                    ({model | projects = [], currentProject = Nothing}, Api.deleteApiProject projectId (fromServer InitialProjects))
                 DeleteWorkButton projectId id ->
                     ( model
                     , deleteApiWorkByElmWorkId id (fromServer (\() -> DeleteWork projectId id))
@@ -473,12 +476,16 @@ viewProject project allWorks =
                         Just ws -> ws
             in
                 List.foldl (+) 0 hours
-    in div [ class "columns" ] (
-        List.map (\t -> div [ class "column" ]  [ text t ])
+        archiveButtonAttr = case project.projectId of
+          Just id -> [ onClick (FromUi (Archive id)) ]
+          _       -> [ disabled True ]
+        texts = List.map (\t -> div [ class "column" ]  [ text t ])
             [
                 name, unitPriceStr, format usLocale totalHours
               , format usLocale <| (*) totalHours <| toFloat unitPrice
             ]
+    in div [ class "columns" ] (
+              texts ++ [ myButton archiveButtonAttr [ text "Archive" ]]
         )
 
 

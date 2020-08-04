@@ -24,8 +24,9 @@ share [mkPersist sqlSettings, mkMigrate "migrateAll"] [persistLowerCase|
 --   UniqueName name
 --   deriving Eq Read Show
 Project
-  name Text
-  unitPrice Int
+  name       Text
+  unitPrice  Int
+  archived   Bool default=False
   UniqueName name
   deriving Eq Read Show
 Work
