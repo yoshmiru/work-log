@@ -2,24 +2,37 @@ module Main exposing (FromServer(..), FromUi(..), Model, Msg(..), fromServer, in
 
 import Api exposing (..)
 import Browser
+import Browser.Navigation as Nav
 import Debug exposing (log)
 import Dict exposing (Dict)
 import FormatNumber exposing (format)
 import FormatNumber.Locales exposing (usLocale)
-import Html exposing (Html, button, div, input, li, option, pre, select, span, table, tr, th, td, text, textarea, ul)
+import Html exposing (Html, button, div, input, label, li, option, pre, select, span, table, tr, th, td, text, textarea, ul)
 import Html.Attributes exposing (class, disabled, placeholder, style, type_, value)
+import Html.Attributes as A
 import Html.Events exposing (onClick, onInput)
 import Http
 import List exposing (filter, head, map)
+import Page
+import Page.Bill as Bill
+import Page.Works as Works
+import Route exposing (Route)
+import Session exposing (Session(..))
 import String exposing (fromFloat, fromInt, join, split, toInt)
 import Task exposing (andThen)
 import Tuple exposing (first, second)
+import Url  exposing (..)
+
+import Utils exposing (..)
+
 
 
 main : Program () Model Msg
 main =
-    Browser.element
-        { init = \() -> init
+    Browser.application
+        { init = init
+        , onUrlChange = UrlChanged
+        , onUrlRequest = LinkClicked
         , update = update
         , subscriptions = \_ -> Sub.none
         , view = view
@@ -27,7 +40,16 @@ main =
 
 -- MODEL
 
-type alias Model =
+type Model
+  = Default Session Model_
+  | Works_  Model Works.Model
+  | Bill    Model Bill.Model
+  | NotFound Session
+
+type History
+  = List Model
+
+type alias Model_ =
     { items : Dict Int Item
     , projects : List ElmProject
     , addProjectInput : String
@@ -41,13 +63,33 @@ type alias Model =
     , works : Dict ElmProjectId (List ElmWork)
     , notes : String
     , error : Maybe String
+    , onConfirm : Maybe Msg
     }
 
+initialModel : Model_
+initialModel = {
+    items = Dict.empty
+  , projects = []
+  , addProjectInput = ""
+  , addProjectUnitPriceInput = 0
+  , addWorkProjectNameInput = ""
+  , addWorkFromInput = Nothing
+  , addWorkToInput   = Nothing
+  , addWorkNotesInput = ""
+  , currentProject   = Nothing
+  , showSummary      = False
+  , works = Dict.empty
+  , notes = ""
+  , error = Nothing
+  , onConfirm = Nothing
+  }
 
-init : ( Model, Cmd Msg )
-init =
-    ( Model Dict.empty [] "" 0 "" Nothing Nothing "" Nothing False Dict.empty "" Nothing
-    , Api.getApiItem (fromServer Initial)
+init : () -> Url -> Nav.Key -> ( Model, Cmd Msg )
+init () url key =
+    changeRouteTo
+        (Route.fromUrl url)
+        (Default (Guest key) initialModel
+        -- , Api.getApiItem (fromServer Initial)
     )
 
 
@@ -59,6 +101,10 @@ type Msg
     = FromServer FromServer
     | FromUi FromUi
     | Error String
+    | UrlChanged Url
+    | LinkClicked Browser.UrlRequest
+    | GotWorksMsg Works.Msg
+    | GotBillMsg Bill.Msg
 
 
 type FromServer
@@ -77,6 +123,8 @@ type FromUi
     | AddProjectButton
     | AddWorkButton
     | Archive ElmProjectId
+    | Confirm Msg
+    | Cancel
     | DeleteWorkButton ElmProjectId ElmWorkId
     | Done ItemId
     | SelectProject String
@@ -87,9 +135,103 @@ type FromUi
     | ClickNotes String
 
 
+toSession : Model -> Session
+toSession page =
+    case page of
+        Default session _ ->
+            session
+        Works_ _ bill ->
+            Works.toSession bill
+        Bill _ bill ->
+            Bill.toSession bill
+        NotFound session ->
+            session
+
+
+changeRouteTo : Maybe Route -> Model -> ( Model, Cmd Msg )
+changeRouteTo maybeRoute model =
+    let
+        session =
+            toSession model
+    in
+        case Debug.log "route" maybeRoute of
+            Nothing ->
+                ( NotFound session, Cmd.none )
+            Just Route.Home ->
+                case model of
+                    Default _ model_ ->
+                        ( Default session model_, Api.getApiItem (fromServer Initial) )
+                    Works_ prev model_ ->
+                        ( prev, Api.getApiItem (fromServer Initial) )
+                    Bill prev model_ ->
+                        ( prev, Api.getApiItem (fromServer Initial) )
+                    _ ->
+                        ( Default session initialModel, Api.getApiItem (fromServer Initial) )
+            Just (Route.Works projectId) ->
+                case model of
+                    Bill prev model_ ->
+                        ( prev, Cmd.none )
+                    _ ->
+                        Works.init session projectId
+                            |> updateWith (\subModel -> Works_ model subModel) GotWorksMsg model
+
+            Just (Route.Bill projectId) ->
+                case model of
+                    Bill prev _ ->
+                        Bill.init session projectId
+                            |> updateWith (\subModel -> Bill prev subModel) GotBillMsg model
+                    _ ->
+                        Bill.init session projectId
+                            |> updateWith (\subModel -> Bill model subModel) GotBillMsg model
+
+
+updateWith : (subModel -> Model) -> (subMsg -> Msg) -> Model -> ( subModel, Cmd subMsg ) -> ( Model, Cmd Msg )
+updateWith toModel toMsg model ( subModel, subCmd ) =
+    ( toModel subModel
+    , Cmd.map toMsg subCmd
+    )
+
+
+showModel model =
+    case model of
+        Default _ _ -> "Default"
+        Works_ _ _ -> "Works_"
+        Bill _ _ -> "Bill"
+        NotFound _ -> "NotFround"
+
+
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
-    case msg of
+    case Debug.log "update" msg of
+
+        UrlChanged url ->
+            changeRouteTo (Route.fromUrl url) model
+
+        LinkClicked urlRequest ->
+            case urlRequest of
+                Browser.Internal url ->
+                    case url.fragment of
+                        Nothing ->
+                            ( model, Cmd.none )
+                        Just _ ->
+                            (model , Nav.pushUrl (Session.navKey (toSession model)) (Url.toString url))
+
+                Browser.External href ->
+                    (model , Nav.load href)
+
+        GotWorksMsg subMsg ->
+            case model of
+                Works_ prev subModel ->
+                    Works.update subMsg subModel
+                        |> updateWith (\subModel_ -> Works_ prev subModel_) GotWorksMsg model
+                _ -> (model, Cmd.none)
+        GotBillMsg subMsg ->
+            case model of
+                Bill prev subModel ->
+                    Bill.update subMsg subModel
+                        |> updateWith (\subModel_ -> Bill (Debug.log "prev" prev) subModel_) GotBillMsg model
+                _ -> (model, Cmd.none)
+
         FromServer fromServerMsg ->
             case fromServerMsg of
                 Initial itemIds ->
@@ -101,126 +243,150 @@ update msg model =
 
                 InitialProjects _ ->
                     ( model , getApiProject(fromServer Projects) )
-                Projects projects ->
-                    ( { model | projects = projects } , Cmd.none )
-                NewItem item ->
-                    ( { model | items = Dict.insert item.id item model.items }
-                    , Cmd.none
-                    )
+                _ ->
+                    case model of
+                        Default session model_ ->
+                            case fromServerMsg of
+                                Projects projects ->
+                                    ( Default session { model_ | projects = projects } , Cmd.none )
+                                NewItem item ->
+                                    ( Default session { model_ | items = Dict.insert item.id item model_.items } , Cmd.none)
 
-                Delete id ->
-                    ( { model | items = Dict.remove id model.items }
-                    , Cmd.none
-                    )
+                                Delete id ->
+                                    ( Default session { model_ | items = Dict.remove id model_.items }, Cmd.none )
 
-                DeleteWork projectId id ->
-                  let works = case Dict.get projectId model.works of
-                        Just ws -> List.filter (\work -> work.workId /= Just id) ws
-                        _ -> []
-                      updater = \mWorks -> case mWorks of
-                        Just _ -> Just works
-                        _ -> Nothing
-                  in
-                    ( { model | works = Dict.update projectId updater model.works }
-                    , Cmd.none
-                    )
+                                DeleteWork projectId id ->
+                                    let works =
+                                            case Dict.get projectId model_.works of
+                                                Just ws -> List.filter (\work -> work.workId /= Just id) ws
+                                                _ -> []
+                                        updater = \mWorks ->
+                                            case mWorks of
+                                                Just _ -> Just works
+                                                _ -> Nothing
+                                    in
+                                        ( Default session { model_ | works = Dict.update projectId updater model_.works }
+                                        , Cmd.none
+                                        )
 
-                Works projectId works ->
-                        let updater = \_ -> Just works
-                        in
-                        ( { model | works = Dict.update projectId updater model.works }, Cmd.none)
+                                Works projectId works ->
+                                        let updater = \_ -> Just works
+                                        in
+                                            ( Default session { model_ | works = Dict.update projectId updater model_.works }, Cmd.none)
+                                _ ->
+                                    ( NotFound (toSession model), Cmd.none )
+                        _ ->
+                            ( NotFound (toSession model), Cmd.none )
 
         FromUi fromUi ->
-            case fromUi of
-                AddProjectButton ->
-                    let
-                        projectName = model.addProjectInput
-                        projectUnitPrice = model.addProjectUnitPriceInput
-                    in
-                    if projectName == "" then
-                        update (Error "empty field") model
+            case model of
+                Default session model_ ->
+                    case fromUi of
+                        AddProjectButton ->
+                            let
+                                projectName = model_.addProjectInput
+                                projectUnitPrice = model_.addProjectUnitPriceInput
+                            in
+                            if projectName == "" then
+                                update (Error "empty field") model
 
-                    else
-                        ( { model | addProjectInput = "" }
-                        , postApiProject (Project projectName projectUnitPrice False) (fromServer InitialProjects)
-                        )
+                            else
+                                ( Default session { model_ | addProjectInput = "" }
+                                , postApiProject (Project projectName projectUnitPrice False) (fromServer InitialProjects)
+                                )
 
-                AddWorkButton ->
-                    let
-                        mProjectId = case model.currentProject of
-                            Just project -> project.projectId
-                            Nothing -> Nothing
-                        from = case model.addWorkFromInput of
-                          Nothing -> let d = ElmDay 0 0 0
-                                         t = ElmTime 0 0
-                                     in ElmDateTime d t
-                          Just f -> f
-                        to = model.addWorkToInput
-                        notes = model.addWorkNotesInput
-                        next = case mProjectId of
-                            Nothing -> Cmd.none
-                            Just projectId -> postApiWork (ElmWork Nothing projectId from to Nothing notes) (fromServer (\(works) -> Works projectId works))
-                    in
-                    ( model, next)
+                        AddWorkButton ->
+                            let
+                                mProjectId = case model_.currentProject of
+                                    Just project -> project.projectId
+                                    Nothing -> Nothing
+                                from = case model_.addWorkFromInput of
+                                  Nothing -> let d = ElmDay 0 0 0
+                                                 t = ElmTime 0 0
+                                             in ElmDateTime d t
+                                  Just f -> f
+                                to = model_.addWorkToInput
+                                notes = model_.addWorkNotesInput
+                                next = case mProjectId of
+                                    Nothing -> Cmd.none
+                                    Just projectId -> postApiWork (ElmWork Nothing projectId from to Nothing notes) (fromServer (\(works) -> Works projectId works))
+                            in
+                            ( model, next)
 
-                AddProjectInputChange t ->
-                    ( { model | addProjectInput = t, error = Nothing }
-                    , Cmd.none
-                    )
-
-                AddProjectUnitPriceInputChange t ->
-                    let unitPrice = case toInt(t) of
-                            Just price -> price
-                            _ -> 0
-                    in
-                        if unitPrice == 0 then
-                            update(Error "invalid price") model
-                        else
-                            ( { model | addProjectUnitPriceInput = unitPrice, error = Nothing }
+                        AddProjectInputChange t ->
+                            ( Default session { model_ | addProjectInput = t, error = Nothing }
                             , Cmd.none
                             )
 
-                Archive projectId ->
-                    ({model | projects = [], currentProject = Nothing}, Api.deleteApiProject projectId (fromServer InitialProjects))
-                DeleteWorkButton projectId id ->
-                    ( model
-                    , deleteApiWorkByElmWorkId id (fromServer (\() -> DeleteWork projectId id))
-                    )
+                        AddProjectUnitPriceInputChange t ->
+                            let unitPrice = case toInt(t) of
+                                    Just price -> price
+                                    _ -> -1
+                            in
+                                if unitPrice < 0 then
+                                    update (Error "invalid price") model
+                                else
+                                    ( Default session { model_ | addProjectUnitPriceInput = unitPrice, error = Nothing }
+                                    , Cmd.none
+                                    )
 
-                Done id ->
-                    ( model
-                    , deleteApiItemByItemId id (fromServer (\() -> Delete id))
-                    )
-                SelectProject projectIdStr ->
-                    let find projectId projects =
-                            let
-                                filter_ = filter byId projects
-                                byId = \p -> case p.projectId of
-                                   Nothing -> False
-                                   Just pid -> pid == projectId
-                            in filter_ |> head
-                        mProjectId = toInt projectIdStr
-                        maybeFetch projectId = case Dict.get projectId model.works of
-                            Just [] -> getApiWorkByProjectId projectId (fromServer (Works projectId))
-                            Nothing -> getApiWorkByProjectId projectId (fromServer (Works projectId))
-                            Just works -> Cmd.none
-                    in
-                        case mProjectId of
-                            Nothing -> (model, Cmd.none)
-                            Just projectId ->
-                                ( { model | currentProject = find projectId model.projects }, maybeFetch projectId )
-                ShowSummaryButton v ->
-                    ({model | showSummary = v}, Cmd.none)
-                WorkInputFrom t ->
-                    ({ model | addWorkFromInput = parseDate t}, "" ++ (log "debug" t) |> \_ -> Cmd.none)
-                WorkInputTo t ->
-                    ({ model | addWorkToInput = parseDate t}, "" ++ (log "debug" t) |> \_ -> Cmd.none)
-                WorkInputNotes t -> ({ model | addWorkNotesInput = t }, Cmd.none)
+                        Archive projectId ->
+                            (Default session { model_ |
+                                projects = []
+                              , currentProject = Nothing}
+                            , Api.deleteApiProject projectId (fromServer InitialProjects))
 
-                ClickNotes notes -> ({model | notes = notes}, Cmd.none)
+                        Confirm msg_ ->
+                            ( Default session {model_ | onConfirm = Just msg_ }, Cmd.none )
+
+                        Cancel ->
+                            ( Default session {model_ | onConfirm = Nothing }, Cmd.none )
+
+                        DeleteWorkButton projectId id ->
+                            ( model
+                            , deleteApiWorkByElmWorkId id (fromServer (\() -> DeleteWork projectId id))
+                            )
+
+                        Done id ->
+                            ( model
+                            , deleteApiItemByItemId id (fromServer (\() -> Delete id))
+                            )
+                        SelectProject projectIdStr ->
+                            let find projectId projects =
+                                    let
+                                        filter_ = filter byId projects
+                                        byId = \p -> case p.projectId of
+                                           Nothing -> False
+                                           Just pid -> pid == projectId
+                                    in filter_ |> head
+                                mProjectId = toInt projectIdStr
+                                maybeFetch projectId = case Dict.get projectId model_.works of
+                                    Just [] -> getApiWorkByProjectId projectId (fromServer (Works projectId))
+                                    Nothing -> getApiWorkByProjectId projectId (fromServer (Works projectId))
+                                    Just works -> Cmd.none
+                            in
+                                case mProjectId of
+                                    Nothing -> (model, Cmd.none)
+                                    Just projectId ->
+                                        ( Default session { model_ | currentProject = find projectId model_.projects }, maybeFetch projectId )
+                        ShowSummaryButton v ->
+                            (Default session {model_ | showSummary = v}, Cmd.none)
+                        WorkInputFrom t ->
+                            (Default session { model_ | addWorkFromInput = parseDate t}, "" ++ (log "debug" t) |> \_ -> Cmd.none)
+                        WorkInputTo t ->
+                            (Default session { model_ | addWorkToInput = parseDate t}, "" ++ (log "debug" t) |> \_ -> Cmd.none)
+                        WorkInputNotes t -> (Default session { model_ | addWorkNotesInput = t }, Cmd.none)
+
+                        ClickNotes notes -> (Default session {model_ | notes = notes}, Cmd.none)
+                _ ->
+                    ( NotFound (toSession model), Cmd.none )
 
         Error error ->
-            ( { model | error = Just error }, Cmd.none )
+            case model of
+                Default session model_ ->
+                    ( Default session { model_ | error = Just error }, Cmd.none )
+                _ ->
+                    ( NotFound (toSession model), Cmd.none )
 
 
 fromServer : (a -> FromServer) -> Result Http.Error a -> Msg
@@ -256,63 +422,97 @@ httpErrorToString error =
 -- VIEW
 
 
-view : Model -> Html Msg
-view model =
-    let
-        items =
-            List.map (viewItem << Tuple.second) (Dict.toList model.items)
-        projects =
-            (option
-                []
-                [text "Please select"]) :: List.map viewProjectOpt model.projects
-
-        error =
-            model.error
-                |> Maybe.map viewError
-                |> Maybe.withDefault (Html.text "")
-
-        works = case model.currentProject of
-            Nothing -> []
-            Just p -> case p.projectId of
-                Nothing -> []
-                Just pid -> case Dict.get pid model.works of
-                    Nothing -> []
-                    Just ws -> ws
-
+view : Model -> Browser.Document Msg
+view model_ =
+    let viewPage toMsg config =
+            let
+                { title, body } =
+                    Page.view config
+            in
+            { title = title
+            , body = List.map (Html.map toMsg) body
+            }
     in
-    div [ class "section" ]
-        [
-        div [ class "container" ]
-            [ ul [] items
-            , myInput [
-                placeholder "Project Name",
-                onInput (FromUi << AddProjectInputChange), value model.addProjectInput
-                ]
-            , myInput [
-                type_ "number",
-                placeholder "Unit Price",
-                onInput (FromUi << AddProjectUnitPriceInputChange)
-                ]
-            , myButton [ onClick (FromUi AddProjectButton) ] [ text "Add project" ]
-            , error
-            , div []
-                [ mySelect [ class "select", onInput (FromUi << SelectProject) ] projects ]
-            , case model.currentProject of
-                Nothing -> text ""
-                Just project -> viewProject project model.works
-            , viewNotes model.notes works
-            , viewWorks model
-            ]
-        ]
+    case model_ of
+        NotFound session ->
+            { title = "Not found", body = [ div [] [ text "Not found" ] ] }
+        Works_ _ worksModel ->
+            viewPage GotWorksMsg (Works.view worksModel)
+        Bill _ bill ->
+            viewPage GotBillMsg (Bill.view bill)
+        Default _ model ->
+            let
+                items =
+                    List.map (viewItem << Tuple.second) (Dict.toList model.items)
+                projects =
+                    (option
+                        []
+                        [text "Please select"]) :: List.map (viewProjectOpt model.currentProject) model.projects
 
-sumWorks : List ElmWork -> List(String, Float)
-sumWorks works =
-    let filterByNotes notes = List.filter (byNotes notes) works
-        byNotes notes work = work.notes == notes
-        hours notes = List.map (\w -> Maybe.withDefault 0 w.hours) (filterByNotes notes)
-        summary notes = List.foldl (+) 0 (hours notes)
-        sum work = (work.notes, summary work.notes)
-    in List.map sum works |> Dict.fromList |> Dict.toList
+                error =
+                    model.error
+                        |> Maybe.map viewError
+                        |> Maybe.withDefault (Html.text "")
+
+                works = case model.currentProject of
+                    Nothing -> []
+                    Just p -> case p.projectId of
+                        Nothing -> []
+                        Just pid -> case Dict.get pid model.works of
+                            Nothing -> []
+                            Just ws -> ws
+                confirm
+                  = let onConfirm = model.onConfirm
+                        column = div [ class "column" ]
+                    in  case onConfirm of
+                          Nothing      -> div [] []
+                          Just confirm_ -> div [ class "columns" ] [
+                              column <| [ label [] [ text "Really"] ]
+                            , column <| [ myButton [ onClick confirm_ ] [ text "Yes"] ]
+                            , column <| [ myButton [ onClick (FromUi Cancel) ] [ text "No"] ]
+                              ]
+
+                maybeWorksLink = case model.currentProject of
+                    Just project -> case project.projectId of
+                        Just pId -> Html.a [ Route.href (Route.Works pId), A.class "button is-primary" ] [ Html.text "show works in new page" ]
+                        _ -> Html.span [] []
+                    _ -> Html.span [] []
+            in
+                { title = "Work log"
+                , body =
+                    [ div [ class "section" ]
+                        [
+                        div [ class "container" ]
+                            [ ul [] items
+                            , myInput [
+                                placeholder "Project Name",
+                                onInput (FromUi << AddProjectInputChange), value model.addProjectInput
+                                ]
+                            , myInput [
+                                type_ "number",
+                                placeholder "Unit Price",
+                                onInput (FromUi << AddProjectUnitPriceInputChange)
+                                ]
+                            , myButton [ onClick (FromUi AddProjectButton) ] [ text "Add project" ]
+                            , error
+                            , div []
+                                [ mySelect [ class "select", onInput (FromUi << SelectProject) ] projects
+                                , maybeWorksLink ]
+                            , case model.currentProject of
+                                Nothing -> text ""
+                                Just project ->
+                                    div
+                                      []
+                                      [ viewProject project model.works
+                                      , confirm
+                                      ]
+                            , viewNotes model.notes works
+                            , viewWorks model
+                            ]
+                        ]
+                    ]
+                }
+
 
 viewNotes : String -> List ElmWork -> Html Msg
 viewNotes mNotes works =
@@ -328,7 +528,7 @@ viewNotes mNotes works =
 
 
 formControl : Html Msg -> Html Msg
-formControl input = 
+formControl input =
     div [ class "field" ]
         [
             div [ class "control" ] [ input ]
@@ -349,39 +549,39 @@ myButton attrs content =
     formControl <|
         button (attrs ++ [ class "button is-primary" ]) content
 
-viewWorks : Model -> Html Msg
+viewWorks : Model_ -> Html Msg
 viewWorks model =
-    case model.currentProject of
-        Nothing -> text "Please select a project"
-        Just project ->
-            let maybeProjectId = project.projectId
-                works = model.works
-                showSummary = model.showSummary
-            in
-                case maybeProjectId of
-                    Nothing -> text "Something wrong"
-                    Just projectId ->
-                        div [] [
-                        myInput [
-                          type_ "datetime-local", placeholder "From"
-                        , onInput (FromUi << WorkInputFrom)
-                        ],
-                        myInput [
-                          type_ "datetime-local", placeholder "To"
-                        , onInput (FromUi << WorkInputTo)
-                        ],
-                        textarea [
-                          class "textarea"
-                        , placeholder "Notes"
-                        , onInput (FromUi << WorkInputNotes)
-                        ] [],
-                        myButton [onClick (FromUi AddWorkButton)] [text "Add work"],
-                        (if showSummary then
-                            viewSummary projectId (Dict.get projectId works)
-                        else
-                            viewDetail projectId (Dict.get projectId works))
-                        
-                        ]
+            case model.currentProject of
+                Nothing -> text "Please select a project"
+                Just project ->
+                    let maybeProjectId = project.projectId
+                        works = model.works
+                        showSummary = model.showSummary
+                    in
+                        case maybeProjectId of
+                            Nothing -> text "Something wrong"
+                            Just projectId ->
+                                div [] [
+                                myInput [
+                                  type_ "datetime-local", placeholder "From"
+                                , onInput (FromUi << WorkInputFrom)
+                                ],
+                                myInput [
+                                  type_ "datetime-local", placeholder "To"
+                                , onInput (FromUi << WorkInputTo)
+                                ],
+                                textarea [
+                                  class "textarea"
+                                , placeholder "Notes"
+                                , onInput (FromUi << WorkInputNotes)
+                                ] [],
+                                myButton [onClick (FromUi AddWorkButton)] [text "Add work"]
+                              , Html.a [ class "button is-primary", Route.href (Route.Bill projectId) ] [ text "Bill" ]
+                              , (if showSummary then
+                                    viewSummary projectId (Dict.get projectId works)
+                                else
+                                    viewDetail projectId (Dict.get projectId works))
+                                ]
 
 
 viewSummary : ElmProjectId -> Maybe (List ElmWork) -> Html Msg
@@ -450,13 +650,20 @@ viewItem item =
         , myButton [ onClick (FromUi <| Done item.id) ] [ text "done" ]
         ]
 
-viewProjectOpt : ElmProject -> Html Msg
-viewProjectOpt project =
+viewProjectOpt : Maybe ElmProject -> ElmProject -> Html Msg
+viewProjectOpt currentProject project =
     let projectId = case project.projectId of
             Nothing -> ""
             Just pid -> fromInt pid
+        selected =
+            case currentProject of
+                Just p  ->
+                    case (p.projectId, project.projectId) of
+                        (Just a, Just b) -> a == b
+                        _ -> False
+                _ -> False
     in
-    option [ value projectId ]
+    option [ value projectId, A.selected selected]
         [ text project.projectName ]
 
 viewProject : ElmProject -> Dict ElmProjectId (List ElmWork) -> Html Msg
@@ -477,7 +684,7 @@ viewProject project allWorks =
             in
                 List.foldl (+) 0 hours
         archiveButtonAttr = case project.projectId of
-          Just id -> [ onClick (FromUi (Archive id)) ]
+          Just id -> [ onClick (FromUi (Confirm (FromUi (Archive id)))) ]
           _       -> [ disabled True ]
         texts = List.map (\t -> div [ class "column" ]  [ text t ])
             [
@@ -506,12 +713,3 @@ parseDate t =
                     time = ElmTime hour min
                 in Just (ElmDateTime day time)
             _ -> Nothing
-
-formatDate : ElmDateTime -> String
-formatDate dt = case (dt.day, dt.time) of
-    (d, t) -> case [d.year, d.month, d.dom, t.hour, t.min] of
-      datetimes -> case map (String.pad 2 '0' << fromInt) datetimes of
-        [year, month, dom, hour, min] -> case [[year, month, dom], [hour, min]] of
-          [day, time] -> (join "-" day) ++ " " ++ (join ":" time)
-          _ -> ""
-        _ -> ""

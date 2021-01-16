@@ -54,7 +54,7 @@ server connStr = do
 
 apiServer :: ConnectionPool -> DB -> Server Api
 apiServer pool db =
-      (listProjects pool :<|> postProject pool :<|> archiveProject pool)
+      (listProjects pool :<|> getProjectById pool :<|> postProject pool :<|> archiveProject pool)
   :<|> (listWorks pool :<|> getWorks pool :<|> deleteWork pool
     :<|> postWork pool)
   :<|> (listItem db
@@ -62,13 +62,26 @@ apiServer pool db =
     :<|> postItem db
     :<|> deleteItem db)
 
+toElmProject :: ProjectId -> Project -> ElmProject
+toElmProject pid (Project projectName projectUnitPrice _) =
+  ElmProject (Just $ toElmProjectId pid) (T.unpack projectName) projectUnitPrice
+
 listProjects :: ConnectionPool -> Handler [ElmProject]
 listProjects pool = liftIO $ flip runSqlPersistMPool pool $ do
   maybeProjects <- selectList [ProjectArchived ==. False] []
-  let projects = map toElmProject maybeProjects
-      toElmProject (Entity pid (Project projectName projectUnitPrice _)) =
-        ElmProject (Just $ toElmProjectId pid) (T.unpack projectName) projectUnitPrice
+  let projects = map toElmProject' maybeProjects
+      toElmProject' (Entity pid project) =
+        toElmProject pid project
   return projects
+
+getProjectById :: ConnectionPool -> ElmProjectId -> Handler (Maybe ElmProject)
+getProjectById pool (ElmProjectId id) = liftIO $ flip runSqlPersistMPool pool $ do
+  let id' = (toSqlKey $ fromIntegral id) :: ProjectId
+  mProject <- get id'
+  case mProject of
+    Just project ->
+        return $ Just $ toElmProject id' project
+    _ -> return Nothing
 
 listWorks :: ConnectionPool -> Handler [ElmWork]
 listWorks pool = liftIO $ flip runSqlPersistMPool pool $ do

@@ -1,4 +1,4 @@
-../assets/elm.js: Api.elm Main.elm
+../assets/elm.js: *.elm Page/*.elm# Api.elm
 	elm make Main.elm --output ../assets/elm.js
 	#mv index.html ../assets/
 
