@@ -24,7 +24,6 @@ import           Data.Time.Clock
 import           Data.Time.LocalTime
 import           GHC.Int
 import           Network.Wai
-import           Network.Wai.MakeAssets
 import           Servant
 
 import           Api
@@ -35,22 +34,19 @@ type WithAssets = Api :<|> Raw
 withAssets :: Proxy WithAssets
 withAssets = Proxy
 
-options :: Options
-options = Options "client"
-
 app :: FilePath -> IO Application
 app sqliteFile = serve withAssets <$> server sqliteFile
 
 server :: String -> IO (Server WithAssets)
 server connStr = do
-  assets <- serveAssets options
+  let assets = serveDirectoryFileServer "assets"
   pool <- runStderrLoggingT $ do
     createPostgresqlPool (cs connStr) 5
 
   runSqlPool (runMigration migrateAll) pool
   db <- mkDB
   --_ <- liftIO $ flip runSqlPersistMPool pool $ insert (Project "name")
-  return (apiServer pool db :<|> Tagged assets)
+  return (apiServer pool db :<|> assets)
 
 apiServer :: ConnectionPool -> DB -> Server Api
 apiServer pool db =

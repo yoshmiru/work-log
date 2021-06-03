@@ -4,7 +4,6 @@ dependencies:
   - base
   - warp
   - aeson
-  - wai-make-assets
   - servant
   - servant-elm >= 0.6.0.2
   - elm-bridge >= 0.5.2
